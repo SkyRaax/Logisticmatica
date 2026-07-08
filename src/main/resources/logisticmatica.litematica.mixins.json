@@ -1,0 +1,12 @@
+{
+	"required": false,
+	"minVersion": "0.8",
+	"package": "com.skyraax.logisticmatica.mixin.litematica",
+	"compatibilityLevel": "JAVA_25",
+	"client": [
+		"MixinGuiMaterialList"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	}
+}

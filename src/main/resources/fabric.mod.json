@@ -27,7 +27,8 @@
 		]
 	},
 	"mixins": [
-		"logisticmatica.mixin.json"
+		"logisticmatica.mixin.json",
+		"logisticmatica.litematica.mixins.json"
 	],
 	"accessWidener": "logisticmatica.accesswidener",
 	"depends": {

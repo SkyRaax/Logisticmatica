@@ -6,6 +6,7 @@
 	"logisticmatica.gui.button.material_list.refresh": "Aktualisieren",
 	"logisticmatica.gui.button.material_list.hide_complete": "Fertige ausblenden: %s",
 	"logisticmatica.gui.button.back": "Zurück",
+	"logisticmatica.gui.button.toggle_hud": "Logisticmatica HUD: %s",
 	"logisticmatica.hotkeys.category.main": "Logisticmatica Tastenkürzel",
 
 	"logisticmatica.config.hud.name.hudEnabled": "HUD aktiviert",
