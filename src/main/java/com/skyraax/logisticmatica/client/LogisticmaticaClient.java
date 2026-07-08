@@ -6,13 +6,15 @@ import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.fabricmc.loader.api.FabricLoader;
 
+import fi.dy.masa.malilib.event.InitializationHandler;
+
 /**
  * Client entrypoint. Only invoked on the physical client.
  *
  * <p>Client features (material list, HUD, container tracking, rendering) build on
- * Litematica, so we verify it is present before wiring anything up. If it is missing we
- * degrade gracefully and log a clear message instead of crashing — this keeps the shared
- * jar safe to drop onto any client.
+ * Litematica + MaLiLib, so we verify Litematica is present before touching any MaLiLib
+ * class. If it is missing we degrade gracefully and log a clear message instead of
+ * crashing — this keeps the shared jar safe to drop onto any client.
  */
 @Environment(EnvType.CLIENT)
 public class LogisticmaticaClient implements ClientModInitializer {
@@ -25,8 +27,10 @@ public class LogisticmaticaClient implements ClientModInitializer {
 					Logisticmatica.MOD_NAME);
 			return;
 		}
-		Logisticmatica.LOGGER.info(
-				"[{}] Client init complete. Litematica detected — feature wiring will go here.",
-				Logisticmatica.MOD_NAME);
+
+		// Register with MaLiLib's initialization pipeline. registerModHandlers() then wires
+		// our config, hotkeys, HUD renderer and material-list access on top of Litematica.
+		InitializationHandler.getInstance().registerInitializationHandler(new LogisticmaticaInitHandler());
+		Logisticmatica.LOGGER.info("[{}] Litematica detected — registered MaLiLib init handler.", Logisticmatica.MOD_NAME);
 	}
 }

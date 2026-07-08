@@ -1,3 +1,44 @@
 {
-	"logisticmatica.name": "Logisticmatica"
+	"logisticmatica.name": "Logisticmatica",
+
+	"logisticmatica.gui.title.configs": "Logisticmatica Konfiguration - %s",
+
+	"logisticmatica.config.hud.name.hudEnabled": "HUD aktiviert",
+	"logisticmatica.config.hud.comment.hudEnabled": "Hauptschalter für das Logisticmatica-Material-HUD.",
+	"logisticmatica.config.hud.name.hudAlignment": "HUD-Ausrichtung",
+	"logisticmatica.config.hud.comment.hudAlignment": "An welcher Bildschirmecke das HUD verankert wird.",
+	"logisticmatica.config.hud.name.hudOffsetX": "HUD-Versatz X",
+	"logisticmatica.config.hud.comment.hudOffsetX": "Horizontaler Versatz in Pixeln von der Ecke.",
+	"logisticmatica.config.hud.name.hudOffsetY": "HUD-Versatz Y",
+	"logisticmatica.config.hud.comment.hudOffsetY": "Vertikaler Versatz in Pixeln von der Ecke.",
+	"logisticmatica.config.hud.name.hudScale": "HUD-Skalierung",
+	"logisticmatica.config.hud.comment.hudScale": "Skalierungsfaktor für Text und Symbole im HUD.",
+	"logisticmatica.config.hud.name.hudMaxLines": "HUD max. Zeilen",
+	"logisticmatica.config.hud.comment.hudMaxLines": "Maximale Anzahl an Item-Zeilen im HUD. 0 = unbegrenzt (ganze Liste anzeigen).",
+	"logisticmatica.config.hud.name.hudHideComplete": "Fertige ausblenden",
+	"logisticmatica.config.hud.comment.hudHideComplete": "Blendet Items aus, die bereits vollständig verfügbar sind.",
+	"logisticmatica.config.hud.name.hudOnlyMissing": "Nur Fehlende",
+	"logisticmatica.config.hud.comment.hudOnlyMissing": "Zeigt nur Items, die noch im Bau fehlen.",
+	"logisticmatica.config.hud.name.hudShowHeader": "Kopfzeile anzeigen",
+	"logisticmatica.config.hud.comment.hudShowHeader": "Zeigt eine Kopfzeile mit Schematic-Name und Summen.",
+	"logisticmatica.config.hud.name.hudBackground": "Hintergrund anzeigen",
+	"logisticmatica.config.hud.comment.hudBackground": "Zeichnet einen halbtransparenten Hintergrund hinter dem HUD.",
+	"logisticmatica.config.hud.name.hudShowItemIcons": "Item-Symbole anzeigen",
+	"logisticmatica.config.hud.comment.hudShowItemIcons": "Zeichnet das Item-Symbol neben jeder Zeile.",
+
+	"logisticmatica.config.colors.name.colorText": "Textfarbe",
+	"logisticmatica.config.colors.comment.colorText": "Farbe des normalen HUD-Textes.",
+	"logisticmatica.config.colors.name.colorHeader": "Kopfzeilenfarbe",
+	"logisticmatica.config.colors.comment.colorHeader": "Farbe der HUD-Kopfzeile.",
+	"logisticmatica.config.colors.name.colorHave": "Farbe „vorhanden“",
+	"logisticmatica.config.colors.comment.colorHave": "Farbe für vollständig verfügbare Items.",
+	"logisticmatica.config.colors.name.colorMissing": "Farbe „fehlt“",
+	"logisticmatica.config.colors.comment.colorMissing": "Farbe für die noch fehlende Menge.",
+	"logisticmatica.config.colors.name.colorBackground": "Hintergrundfarbe",
+	"logisticmatica.config.colors.comment.colorBackground": "Farbe des HUD-Hintergrunds, inklusive Alpha.",
+
+	"logisticmatica.config.hotkeys.name.openMaterialList": "Material-Liste öffnen",
+	"logisticmatica.config.hotkeys.comment.openMaterialList": "Öffnet den Logisticmatica-Material-Listen-Bildschirm.",
+	"logisticmatica.config.hotkeys.name.toggleHud": "HUD umschalten",
+	"logisticmatica.config.hotkeys.comment.toggleHud": "Schaltet das Material-HUD ein und aus."
 }

@@ -1,6 +1,7 @@
 package com.skyraax.logisticmatica;
 
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.loader.api.FabricLoader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -16,6 +17,10 @@ import org.slf4j.LoggerFactory;
 public class Logisticmatica implements ModInitializer {
 	public static final String MOD_ID = "logisticmatica";
 	public static final String MOD_NAME = "Logisticmatica";
+	public static final String MOD_VERSION = FabricLoader.getInstance()
+			.getModContainer(MOD_ID)
+			.map(container -> container.getMetadata().getVersion().getFriendlyString())
+			.orElse("unknown");
 	public static final Logger LOGGER = LoggerFactory.getLogger(MOD_NAME);
 
 	@Override
