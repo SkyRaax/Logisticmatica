@@ -35,6 +35,7 @@ public class Configs implements IConfigHandler {
 
 	public static class Hud {
 		public static final ConfigBoolean    ENABLED         = new ConfigBoolean("hudEnabled", true).apply(HUD_KEY);
+		public static final ConfigBoolean    RENDER_IN_GUIS  = new ConfigBoolean("hudRenderInGuis", false).apply(HUD_KEY);
 		public static final ConfigOptionList ALIGNMENT       = new ConfigOptionList("hudAlignment", HudAlignment.TOP_LEFT).apply(HUD_KEY);
 		public static final ConfigInteger    OFFSET_X        = new ConfigInteger("hudOffsetX", 4, 0, 32000).apply(HUD_KEY);
 		public static final ConfigInteger    OFFSET_Y        = new ConfigInteger("hudOffsetY", 4, 0, 32000).apply(HUD_KEY);
@@ -47,7 +48,7 @@ public class Configs implements IConfigHandler {
 		public static final ConfigBoolean    SHOW_ITEM_ICONS = new ConfigBoolean("hudShowItemIcons", true).apply(HUD_KEY);
 
 		public static final ImmutableList<IConfigBase> OPTIONS = ImmutableList.of(
-				ENABLED, ALIGNMENT, OFFSET_X, OFFSET_Y, SCALE, MAX_LINES,
+				ENABLED, RENDER_IN_GUIS, ALIGNMENT, OFFSET_X, OFFSET_Y, SCALE, MAX_LINES,
 				HIDE_COMPLETE, ONLY_MISSING, SHOW_HEADER, SHOW_BACKGROUND, SHOW_ITEM_ICONS
 		);
 	}

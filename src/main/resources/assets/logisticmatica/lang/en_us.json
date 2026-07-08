@@ -5,6 +5,8 @@
 
 	"logisticmatica.config.hud.name.hudEnabled": "HUD Enabled",
 	"logisticmatica.config.hud.comment.hudEnabled": "Master toggle for the Logisticmatica material HUD.",
+	"logisticmatica.config.hud.name.hudRenderInGuis": "Render In GUIs",
+	"logisticmatica.config.hud.comment.hudRenderInGuis": "Also draw the HUD while a screen/menu is open (e.g. over inventories). Off by default so it stays a gameplay overlay and does not cover menus.",
 	"logisticmatica.config.hud.name.hudAlignment": "HUD Alignment",
 	"logisticmatica.config.hud.comment.hudAlignment": "Which screen corner the HUD is anchored to.",
 	"logisticmatica.config.hud.name.hudOffsetX": "HUD Offset X",

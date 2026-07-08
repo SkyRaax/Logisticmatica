@@ -41,6 +41,12 @@ public class MaterialHudRenderer implements IRenderer {
 			return;
 		}
 
+		// A material HUD is a gameplay overlay: don't draw it over open screens/menus
+		// (e.g. Litematica's own material-list GUI) unless the user explicitly allows it.
+		if (GuiUtils.getCurrentScreen() != null && !Configs.Hud.RENDER_IN_GUIS.getBooleanValue()) {
+			return;
+		}
+
 		MaterialListBase materialList = DataManager.getMaterialList();
 		if (materialList == null) {
 			return;
