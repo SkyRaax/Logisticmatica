@@ -1,0 +1,44 @@
+{
+	"schemaVersion": 1,
+	"id": "logisticmatica",
+	"version": "${mod_version}",
+	"name": "Logisticmatica",
+	"description": "Collaborative, server-aware build logistics for Litematica: a configurable material HUD, container tracking, persistent material substitution, and shared placements with live sync and granular permissions.",
+	"authors": [
+		"SkyRaax"
+	],
+	"contact": {
+		"homepage": "https://github.com/SkyRaax/Logisticmatica",
+		"sources": "https://github.com/SkyRaax/Logisticmatica",
+		"issues": "https://github.com/SkyRaax/Logisticmatica/issues"
+	},
+	"license": "LGPL-3.0-only",
+	"icon": "assets/logisticmatica/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"com.skyraax.logisticmatica.Logisticmatica"
+		],
+		"client": [
+			"com.skyraax.logisticmatica.client.LogisticmaticaClient"
+		]
+	},
+	"mixins": [
+		"logisticmatica.mixin.json"
+	],
+	"accessWidener": "logisticmatica.accesswidener",
+	"depends": {
+		"fabricloader": ">=0.19.3",
+		"minecraft": ">=26.2 <26.3",
+		"java": ">=25",
+		"fabric-networking-api-v1": ">=6.3.3"
+	},
+	"suggests": {
+		"malilib": ">=0.29.0- <0.30.0-",
+		"litematica": ">=0.28.0- <0.29.0-"
+	},
+	"breaks": {
+		"malilib": "<0.29.0-",
+		"litematica": "<0.28.0-"
+	}
+}

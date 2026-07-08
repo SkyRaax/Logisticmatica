@@ -1,0 +1,45 @@
+# local buildscript
+buildAndTest.sh
+
+# logs ?
+
+logs/
+
+# gradle
+
+.gradle/
+build/
+out/
+classes/
+libs/
+
+# dependencies
+
+dependencies/
+
+# eclipse
+
+*.launch
+
+# idea
+
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# vscode
+
+.settings/
+.vscode/
+bin/
+.classpath
+.project
+
+# fabric
+
+run/
+
+# macOS
+
+.DS_Store

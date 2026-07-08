@@ -1,0 +1,87 @@
+plugins {
+    id 'net.fabricmc.fabric-loom' version '1.17.+'
+}
+
+repositories {
+    // Litematica + MaLiLib (sakura-ryoko's 26.2 builds)
+    maven {
+        url = 'https://masa.dy.fi/maven/sakura-ryoko'
+        content { includeGroupAndSubgroups('fi.dy.masa') }
+    }
+    maven {
+        url = 'https://maven.fallenbreath.me/releases'
+        content { includeGroupAndSubgroups('me.fallenbreath') }
+    }
+    // Mod Menu
+    maven {
+        url = 'https://maven.terraformersmc.com/releases/'
+        content { includeGroupAndSubgroups('com.terraformersmc') }
+    }
+    // Fallback source builds
+    maven {
+        url = 'https://jitpack.io'
+        content { includeGroupAndSubgroups('com.github') }
+    }
+    maven { url = 'https://oss.sonatype.org/content/repositories/snapshots' }
+    maven { url = 'https://maven.nucleoid.xyz/' }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    implementation 'com.google.code.findbugs:jsr305:3.0.2'
+    implementation "net.fabricmc:fabric-loader:${project.fabric_loader_version}"
+
+    // Litematica ecosystem. Client-only at runtime; server code never references these
+    // and guards on FabricLoader.isModLoaded("litematica").
+    implementation "fi.dy.masa.malilib:malilib-fabric-${project.minecraft_version_out}:${project.malilib_version}"
+    implementation "fi.dy.masa.litematica:litematica-fabric-${project.minecraft_version_out}:${project.litematica_version}"
+
+    // Server-safe Fabric API modules, bundled via Jar-in-Jar so a dedicated server needs
+    // nothing extra. Client-only modules (rendering/keybind/screen) are added per-feature.
+    include(api(fabricApi.module('fabric-api-base', project.fabric_api_version)))
+    include(api(fabricApi.module('fabric-networking-api-v1', project.fabric_api_version)))
+    include(api(fabricApi.module('fabric-resource-loader-v1', project.fabric_api_version)))
+    include(api(fabricApi.module('fabric-lifecycle-events-v1', project.fabric_api_version)))
+    include(api(fabricApi.module('fabric-command-api-v2', project.fabric_api_version)))
+
+    // Granular permissions backbone (bundled)
+    implementation include("me.lucko:fabric-permissions-api:${project.fabric_permissions_api_version}")
+
+    // Optional integration
+    compileOnly "com.terraformersmc:modmenu:${project.mod_menu_version}"
+}
+
+base {
+    archivesName = "${project.mod_file_name}-${project.minecraft_version_out}"
+    group = "${project.maven_group}.${project.mod_id}"
+    version = project.mod_version
+}
+
+loom {
+    accessWidenerPath = file('src/main/resources/logisticmatica.accesswidener')
+}
+
+processResources {
+    inputs.property 'mod_version', project.mod_version
+    filesMatching('fabric.mod.json') {
+        expand 'mod_version': project.mod_version
+    }
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+    withSourcesJar()
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.encoding = 'UTF-8'
+    it.options.release = 25
+}
+
+jar {
+    from('LICENSE') {
+        rename { "${it}_${project.mod_file_name}" }
+    }
+}
