@@ -6,7 +6,9 @@ import com.skyraax.logisticmatica.client.gui.GuiConfigs;
 import com.skyraax.logisticmatica.client.hud.MaterialHudRenderer;
 
 import fi.dy.masa.malilib.config.ConfigManager;
+import fi.dy.masa.malilib.event.InputEventHandler;
 import fi.dy.masa.malilib.event.RenderEventHandler;
+import fi.dy.masa.malilib.hotkeys.KeyCallbackToggleBooleanConfigWithMessage;
 import fi.dy.masa.malilib.interfaces.IInitializationHandler;
 import fi.dy.masa.malilib.registry.Registry;
 import fi.dy.masa.malilib.util.data.ModInfo;
@@ -25,9 +27,12 @@ public class LogisticmaticaInitHandler implements IInitializationHandler {
 
 		RenderEventHandler.getInstance().registerInGameGuiRenderer(new MaterialHudRenderer());
 
-		// Hotkeys, tick handlers and per-world persistence are registered in the
-		// following implementation steps.
+		// Hotkeys: register the keybinds and attach callbacks.
+		InputEventHandler.getKeybindManager().registerKeybindProvider(InputHandler.getInstance());
+		Configs.Hotkeys.TOGGLE_HUD.getKeybind().setCallback(
+				new KeyCallbackToggleBooleanConfigWithMessage(Configs.Hud.ENABLED));
+		Configs.Hotkeys.OPEN_MATERIAL_LIST.getKeybind().setCallback(new OpenMaterialListCallback());
 
-		Logisticmatica.LOGGER.info("[{}] Config, config screen and material HUD registered.", Logisticmatica.MOD_NAME);
+		Logisticmatica.LOGGER.info("[{}] Config, config screen, HUD and hotkeys registered.", Logisticmatica.MOD_NAME);
 	}
 }

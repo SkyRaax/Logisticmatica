@@ -21,6 +21,9 @@
 		],
 		"client": [
 			"com.skyraax.logisticmatica.client.LogisticmaticaClient"
+		],
+		"modmenu": [
+			"com.skyraax.logisticmatica.client.LogisticmaticaModMenu"
 		]
 	},
 	"mixins": [
