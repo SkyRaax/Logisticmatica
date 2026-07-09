@@ -9,6 +9,16 @@
 	"logisticmatica.gui.button.toggle_hud": "Logisticmatica HUD: %s",
 	"logisticmatica.hotkeys.category.main": "Logisticmatica Tastenkürzel",
 
+	"logisticmatica.config.hotkeys.name.markContainer": "Container markieren",
+	"logisticmatica.config.hotkeys.comment.markContainer": "Visiere einen Container an und drücke dies, um ihn zu markieren/entfernen. Inhalte markierter Container zählen zur Material-Liste und werden in der Welt hervorgehoben.",
+	"logisticmatica.config.colors.name.colorContainerHighlight": "Container-Highlight",
+	"logisticmatica.config.colors.comment.colorContainerHighlight": "Farbe der Umrandung um markierte Container in der Welt.",
+
+	"logisticmatica.message.mark.no_target": "Du visierst keinen Block an.",
+	"logisticmatica.message.mark.not_a_container": "Dieser Block ist kein Container.",
+	"logisticmatica.message.mark.marked": "Container markiert - sein Inhalt zählt jetzt zur Liste.",
+	"logisticmatica.message.mark.unmarked": "Container-Markierung entfernt.",
+
 	"logisticmatica.config.hud.name.hudEnabled": "HUD aktiviert",
 	"logisticmatica.config.hud.comment.hudEnabled": "Hauptschalter für das Logisticmatica-Material-HUD.",
 	"logisticmatica.config.hud.name.hudRenderInGuis": "In GUIs anzeigen",

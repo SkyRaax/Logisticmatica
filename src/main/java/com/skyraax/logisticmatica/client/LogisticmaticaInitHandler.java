@@ -8,6 +8,7 @@ import com.skyraax.logisticmatica.client.hud.MaterialHudRenderer;
 import fi.dy.masa.malilib.config.ConfigManager;
 import fi.dy.masa.malilib.event.InputEventHandler;
 import fi.dy.masa.malilib.event.RenderEventHandler;
+import fi.dy.masa.malilib.event.WorldLoadHandler;
 import fi.dy.masa.malilib.hotkeys.KeyCallbackToggleBooleanConfigWithMessage;
 import fi.dy.masa.malilib.interfaces.IInitializationHandler;
 import fi.dy.masa.malilib.registry.Registry;
@@ -25,14 +26,20 @@ public class LogisticmaticaInitHandler implements IInitializationHandler {
 		Registry.CONFIG_SCREEN.registerConfigScreenFactory(
 				new ModInfo(Logisticmatica.MOD_ID, Logisticmatica.MOD_NAME, GuiConfigs::new));
 
+		// Renderers: the material HUD (in-game GUI overlay) and the tracked-container highlight (world).
 		RenderEventHandler.getInstance().registerInGameGuiRenderer(new MaterialHudRenderer());
+		RenderEventHandler.getInstance().registerWorldLastRenderer(new ContainerHighlightRenderer());
 
 		// Hotkeys: register the keybinds and attach callbacks.
 		InputEventHandler.getKeybindManager().registerKeybindProvider(InputHandler.getInstance());
 		Configs.Hotkeys.TOGGLE_HUD.getKeybind().setCallback(
 				new KeyCallbackToggleBooleanConfigWithMessage(Configs.Hud.ENABLED));
 		Configs.Hotkeys.OPEN_MATERIAL_LIST.getKeybind().setCallback(new OpenMaterialListCallback());
+		Configs.Hotkeys.MARK_CONTAINER.getKeybind().setCallback(new MarkContainerCallback());
 
-		Logisticmatica.LOGGER.info("[{}] Config, config screen, HUD and hotkeys registered.", Logisticmatica.MOD_NAME);
+		// Persistence: load tracked containers on world join, clear on leave.
+		WorldLoadHandler.getInstance().registerWorldLoadPostHandler(new ContainerTrackerWorldLoad());
+
+		Logisticmatica.LOGGER.info("[{}] Config, HUD, hotkeys and container tracking registered.", Logisticmatica.MOD_NAME);
 	}
 }

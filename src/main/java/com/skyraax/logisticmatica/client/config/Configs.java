@@ -56,14 +56,15 @@ public class Configs implements IConfigHandler {
 	private static final String COLORS_KEY = Logisticmatica.MOD_ID + ".config.colors";
 
 	public static class Colors {
-		public static final ConfigColor TEXT       = new ConfigColor("colorText",       "#FFFFFFFF").apply(COLORS_KEY);
-		public static final ConfigColor HEADER     = new ConfigColor("colorHeader",     "#FFFFAA00").apply(COLORS_KEY);
-		public static final ConfigColor HAVE       = new ConfigColor("colorHave",       "#FF55FF55").apply(COLORS_KEY);
-		public static final ConfigColor MISSING    = new ConfigColor("colorMissing",    "#FFFF5555").apply(COLORS_KEY);
-		public static final ConfigColor BACKGROUND = new ConfigColor("colorBackground", "#B0000000").apply(COLORS_KEY);
+		public static final ConfigColor TEXT                = new ConfigColor("colorText",              "#FFFFFFFF").apply(COLORS_KEY);
+		public static final ConfigColor HEADER              = new ConfigColor("colorHeader",            "#FFFFAA00").apply(COLORS_KEY);
+		public static final ConfigColor HAVE                = new ConfigColor("colorHave",              "#FF55FF55").apply(COLORS_KEY);
+		public static final ConfigColor MISSING             = new ConfigColor("colorMissing",           "#FFFF5555").apply(COLORS_KEY);
+		public static final ConfigColor BACKGROUND          = new ConfigColor("colorBackground",        "#B0000000").apply(COLORS_KEY);
+		public static final ConfigColor CONTAINER_HIGHLIGHT = new ConfigColor("colorContainerHighlight", "#FF55FF55").apply(COLORS_KEY);
 
 		public static final ImmutableList<IConfigBase> OPTIONS = ImmutableList.of(
-				TEXT, HEADER, HAVE, MISSING, BACKGROUND
+				TEXT, HEADER, HAVE, MISSING, BACKGROUND, CONTAINER_HIGHLIGHT
 		);
 	}
 
@@ -72,9 +73,10 @@ public class Configs implements IConfigHandler {
 	public static class Hotkeys {
 		public static final ConfigHotkey OPEN_MATERIAL_LIST = new ConfigHotkey("openMaterialList", "").apply(HOTKEYS_KEY);
 		public static final ConfigHotkey TOGGLE_HUD         = new ConfigHotkey("toggleHud", "").apply(HOTKEYS_KEY);
+		public static final ConfigHotkey MARK_CONTAINER     = new ConfigHotkey("markContainer", "").apply(HOTKEYS_KEY);
 
 		public static final ImmutableList<IHotkey> HOTKEY_LIST = ImmutableList.of(
-				OPEN_MATERIAL_LIST, TOGGLE_HUD
+				OPEN_MATERIAL_LIST, TOGGLE_HUD, MARK_CONTAINER
 		);
 	}
 
