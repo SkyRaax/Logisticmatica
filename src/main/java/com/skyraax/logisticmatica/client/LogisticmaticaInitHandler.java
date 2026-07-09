@@ -8,6 +8,7 @@ import com.skyraax.logisticmatica.client.hud.MaterialHudRenderer;
 import fi.dy.masa.malilib.config.ConfigManager;
 import fi.dy.masa.malilib.event.InputEventHandler;
 import fi.dy.masa.malilib.event.RenderEventHandler;
+import fi.dy.masa.malilib.event.TickHandler;
 import fi.dy.masa.malilib.event.WorldLoadHandler;
 import fi.dy.masa.malilib.hotkeys.KeyCallbackToggleBooleanConfigWithMessage;
 import fi.dy.masa.malilib.interfaces.IInitializationHandler;
@@ -37,8 +38,10 @@ public class LogisticmaticaInitHandler implements IInitializationHandler {
 		Configs.Hotkeys.OPEN_MATERIAL_LIST.getKeybind().setCallback(new OpenMaterialListCallback());
 		Configs.Hotkeys.MARK_CONTAINER.getKeybind().setCallback(new MarkContainerCallback());
 
-		// Persistence: load tracked containers on world join, clear on leave.
+		// Persistence + counting: load tracked containers on world join, and (single-player) keep
+		// their content snapshots fresh each tick so their items count towards the list.
 		WorldLoadHandler.getInstance().registerWorldLoadPostHandler(new ContainerTrackerWorldLoad());
+		TickHandler.getInstance().registerClientTickHandler(new ContainerContentTickHandler());
 
 		Logisticmatica.LOGGER.info("[{}] Config, HUD, hotkeys and container tracking registered.", Logisticmatica.MOD_NAME);
 	}

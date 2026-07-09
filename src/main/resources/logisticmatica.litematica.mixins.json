@@ -4,7 +4,8 @@
 	"package": "com.skyraax.logisticmatica.mixin.litematica",
 	"compatibilityLevel": "JAVA_25",
 	"client": [
-		"MixinGuiMaterialList"
+		"MixinGuiMaterialList",
+		"MixinMaterialListUtils"
 	],
 	"injectors": {
 		"defaultRequire": 1

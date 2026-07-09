@@ -1,32 +1,40 @@
 package com.skyraax.logisticmatica.client;
 
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Set;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import it.unimi.dsi.fastutil.objects.Object2IntMap;
+import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 
 import net.minecraft.core.BlockPos;
 
 import fi.dy.masa.malilib.util.FileUtils;
 import fi.dy.masa.malilib.util.StringUtils;
+import fi.dy.masa.malilib.util.data.ItemType;
 import fi.dy.masa.malilib.util.data.json.JsonUtils;
 
 import com.skyraax.logisticmatica.Logisticmatica;
 
 /**
  * Holds the set of containers the player has marked as "tracked" for the current world/dimension,
- * and persists it to a per-world JSON file. Marked container contents get folded into the material
- * list's "available" counts, and the positions are highlighted in the world.
+ * plus a runtime snapshot of each marked container's contents. Marked container contents are folded
+ * into the material list's "available" counts, and the positions are highlighted in the world.
  *
- * <p>Client-side only; the set is loaded on world join and saved whenever it changes.
+ * <p>The marked <em>positions</em> are persisted per world/dimension; the content snapshots are
+ * runtime-only and rebuilt from the world (single-player) or when a container is opened (server).
+ * Positions are always the canonical block (see {@link ContainerBlocks#canonical}).
  */
 public class ContainerTracker {
 	private static final ContainerTracker INSTANCE = new ContainerTracker();
 
 	private final Set<BlockPos> marked = new LinkedHashSet<>();
+	private final Map<BlockPos, Object2IntOpenHashMap<ItemType>> contents = new HashMap<>();
 
 	private ContainerTracker() {
 	}
@@ -47,11 +55,12 @@ public class ContainerTracker {
 		return this.marked.isEmpty();
 	}
 
-	/** Toggles the marked state of a container. @return true if it is now marked, false if unmarked. */
+	/** Toggles the marked state of a (canonical) container. @return true if now marked, false if unmarked. */
 	public boolean toggle(BlockPos pos) {
 		BlockPos immutable = pos.immutable();
 
 		if (this.marked.remove(immutable)) {
+			this.contents.remove(immutable);
 			return false;
 		}
 
@@ -61,6 +70,25 @@ public class ContainerTracker {
 
 	public void clear() {
 		this.marked.clear();
+		this.contents.clear();
+	}
+
+	/** Stores the latest known contents of a marked container (keyed by its canonical position). */
+	public void setContents(BlockPos canonical, Object2IntOpenHashMap<ItemType> counts) {
+		this.contents.put(canonical.immutable(), counts);
+	}
+
+	/** Sum of all tracked containers' contents as item type -&gt; count. */
+	public Object2IntOpenHashMap<ItemType> getTotalContents() {
+		Object2IntOpenHashMap<ItemType> total = new Object2IntOpenHashMap<>();
+
+		for (Object2IntOpenHashMap<ItemType> snapshot : this.contents.values()) {
+			for (Object2IntMap.Entry<ItemType> entry : snapshot.object2IntEntrySet()) {
+				total.addTo(entry.getKey(), entry.getIntValue());
+			}
+		}
+
+		return total;
 	}
 
 	private static Path getStorageFile() {
@@ -86,6 +114,7 @@ public class ContainerTracker {
 
 	public void load() {
 		this.marked.clear();
+		this.contents.clear();
 
 		JsonElement element = JsonUtils.parseJsonFile(getStorageFile());
 
