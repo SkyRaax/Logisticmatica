@@ -12,6 +12,7 @@ import fi.dy.masa.malilib.util.GuiUtils;
 import fi.dy.masa.litematica.gui.GuiMaterialList;
 
 import com.skyraax.logisticmatica.Logisticmatica;
+import com.skyraax.logisticmatica.client.HudToggleListener;
 import com.skyraax.logisticmatica.client.config.Configs;
 
 /**
