@@ -40,7 +40,9 @@ public class MarkContainerCallback implements IHotkeyCallback {
 			return true;
 		}
 
-		boolean nowMarked = ContainerTracker.getInstance().toggle(pos);
+		// Treat a double chest as one unit: toggle its canonical (representative) block.
+		BlockPos canonical = ContainerBlocks.canonical(mc.level, pos);
+		boolean nowMarked = ContainerTracker.getInstance().toggle(canonical);
 		ContainerTracker.getInstance().save();
 
 		InfoUtils.showGuiOrInGameMessage(MessageType.SUCCESS,
