@@ -142,7 +142,8 @@ public class MaterialHudRenderer implements IRenderer {
 		if (showHeader) {
 			long total = materialList.getCountTotal();
 			long missing = materialList.getCountMissing();
-			header = "Materials  " + (total - missing) + " / " + total;
+			String name = materialList.getName();
+			header = (name != null && !name.isEmpty() ? name : "Materials") + "  " + (total - missing) + " / " + total;
 			if (list.size() > rows) {
 				header = header + "  (+" + (list.size() - rows) + ")";
 			}

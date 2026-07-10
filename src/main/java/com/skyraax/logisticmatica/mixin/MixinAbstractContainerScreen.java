@@ -1,5 +1,7 @@
 package com.skyraax.logisticmatica.mixin;
 
+import javax.annotation.Nullable;
+
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -16,28 +18,28 @@ import net.fabricmc.loader.api.FabricLoader;
 
 import com.skyraax.logisticmatica.client.ContainerBlocks;
 import com.skyraax.logisticmatica.client.ContainerScan;
-import com.skyraax.logisticmatica.client.ContainerTracker;
 
 /**
- * On a server the client only sees a container's contents while its screen is open. When the player
- * opens a marked container, snapshot its contents into the tracker so they count towards the list
- * (single-player uses a direct world read instead).
+ * On a server the client only sees a container's contents while its screen is open, so every
+ * container the player looks into is cached from its open screen.
+ *
+ * <p><strong>Timing matters:</strong> the server sends a container's contents in a separate packet
+ * <em>after</em> the screen is opened, so at {@code init()} the slots are still empty. We therefore
+ * only <em>remember</em> which block was opened in {@code init()} (while the crosshair still points
+ * at it) and take the snapshot in {@code onClose()}, when the contents have definitely arrived.
  *
  * <p>This targets a vanilla class, so it always applies; it therefore stays Litematica-free and
- * defers to {@link ContainerScan} only after checking Litematica is present, so a client without
- * Litematica is unaffected.
+ * defers to {@link ContainerScan} only after checking Litematica is present.
  */
 @Mixin(AbstractContainerScreen.class)
 public abstract class MixinAbstractContainerScreen {
 	@Unique
-	private boolean logisticmatica$scanned;
+	@Nullable
+	private BlockPos logisticmatica$openedContainer;
 
 	@Inject(method = "init", at = @At("TAIL"))
-	private void logisticmatica$scanTrackedContainer(CallbackInfo ci) {
-		if (this.logisticmatica$scanned) {
-			return;
-		}
-		this.logisticmatica$scanned = true;
+	private void logisticmatica$rememberOpenedContainer(CallbackInfo ci) {
+		this.logisticmatica$openedContainer = null;
 
 		Minecraft mc = Minecraft.getInstance();
 
@@ -50,10 +52,16 @@ public abstract class MixinAbstractContainerScreen {
 			return;
 		}
 
-		BlockPos canonical = ContainerBlocks.canonical(mc.level, blockHit.getBlockPos());
+		this.logisticmatica$openedContainer = ContainerBlocks.canonical(mc.level, blockHit.getBlockPos());
+	}
 
-		if (ContainerTracker.getInstance().isMarked(canonical)) {
-			ContainerScan.snapshot(canonical, ((AbstractContainerScreen<?>) (Object) this).getMenu());
+	@Inject(method = "onClose", at = @At("HEAD"))
+	private void logisticmatica$snapshotOnClose(CallbackInfo ci) {
+		BlockPos pos = this.logisticmatica$openedContainer;
+
+		if (pos != null) {
+			ContainerScan.snapshotIfContainer(pos, ((AbstractContainerScreen<?>) (Object) this).getMenu());
+			this.logisticmatica$openedContainer = null;
 		}
 	}
 }

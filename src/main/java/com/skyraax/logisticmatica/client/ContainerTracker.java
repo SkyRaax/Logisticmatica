@@ -22,13 +22,16 @@ import fi.dy.masa.malilib.util.data.json.JsonUtils;
 import com.skyraax.logisticmatica.Logisticmatica;
 
 /**
- * Holds the set of containers the player has marked as "tracked" for the current world/dimension,
- * plus a runtime snapshot of each marked container's contents. Marked container contents are folded
- * into the material list's "available" counts, and the positions are highlighted in the world.
+ * Two things: the set of containers the player has <em>marked</em> as tracked, and a cache of the
+ * contents of <em>every</em> container the player has looked into.
  *
- * <p>The marked <em>positions</em> are persisted per world/dimension; the content snapshots are
- * runtime-only and rebuilt from the world (single-player) or when a container is opened (server).
- * Positions are always the canonical block (see {@link ContainerBlocks#canonical}).
+ * <p>Caching every opened container (not just the marked ones) means marking and unmarking takes
+ * effect immediately — no need to re-open a chest after marking it. The cache is also what a
+ * "where is item X" overview can be built on. It is cheap: one small item-to-count map per container.
+ *
+ * <p>Marked <em>positions</em> are persisted per world/dimension; the content cache is runtime-only,
+ * refilled from the world (single-player) or when a container is opened (server). Positions are
+ * always the canonical block (see {@link ContainerBlocks#canonical}).
  */
 public class ContainerTracker {
 	private static final ContainerTracker INSTANCE = new ContainerTracker();
@@ -60,7 +63,7 @@ public class ContainerTracker {
 		BlockPos immutable = pos.immutable();
 
 		if (this.marked.remove(immutable)) {
-			this.contents.remove(immutable);
+			// Deliberately keep the cached contents, so re-marking counts again instantly.
 			return false;
 		}
 
@@ -73,18 +76,27 @@ public class ContainerTracker {
 		this.contents.clear();
 	}
 
-	/** Stores the latest known contents of a marked container (keyed by its canonical position). */
+	/** Caches a container's contents, whether or not it is currently marked. */
 	public void setContents(BlockPos canonical, Object2IntOpenHashMap<ItemType> counts) {
 		this.contents.put(canonical.immutable(), counts);
 	}
 
-	/** Sum of all tracked containers' contents as item type -&gt; count. */
+	/** The cached contents of a container, or null if we have never looked inside it. */
+	public Object2IntOpenHashMap<ItemType> getContents(BlockPos canonical) {
+		return this.contents.get(canonical.immutable());
+	}
+
+	/** Sum of the contents of all marked containers whose contents we know. */
 	public Object2IntOpenHashMap<ItemType> getTotalContents() {
 		Object2IntOpenHashMap<ItemType> total = new Object2IntOpenHashMap<>();
 
-		for (Object2IntOpenHashMap<ItemType> snapshot : this.contents.values()) {
-			for (Object2IntMap.Entry<ItemType> entry : snapshot.object2IntEntrySet()) {
-				total.addTo(entry.getKey(), entry.getIntValue());
+		for (BlockPos pos : this.marked) {
+			Object2IntOpenHashMap<ItemType> snapshot = this.contents.get(pos);
+
+			if (snapshot != null) {
+				for (Object2IntMap.Entry<ItemType> entry : snapshot.object2IntEntrySet()) {
+					total.addTo(entry.getKey(), entry.getIntValue());
+				}
 			}
 		}
 
