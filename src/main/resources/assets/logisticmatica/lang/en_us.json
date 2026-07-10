@@ -11,6 +11,14 @@
 
 	"logisticmatica.config.hotkeys.name.markContainer": "Mark Container",
 	"logisticmatica.config.hotkeys.comment.markContainer": "Look at a container and press this to mark/unmark it as tracked. Marked containers' contents count towards the material list and are highlighted in the world.",
+	"logisticmatica.config.hotkeys.name.openFocusPicker": "Choose Focus",
+	"logisticmatica.config.hotkeys.comment.openFocusPicker": "Opens a picker for choosing which schematic placement Logisticmatica focuses on. The focused placement's material list is what the HUD and the list screen show.",
+
+	"logisticmatica.gui.title.focus": "Logisticmatica - Focus",
+	"logisticmatica.gui.label.focus.active": "Currently focused: %s",
+	"logisticmatica.gui.label.focus.none": "none",
+	"logisticmatica.gui.label.focus.no_placements": "No schematic placements are loaded.",
+	"logisticmatica.gui.button.focus.clear": "Clear focus (hide the list)",
 	"logisticmatica.config.colors.name.colorContainerHighlight": "Container Highlight",
 	"logisticmatica.config.colors.comment.colorContainerHighlight": "Colour of the outline drawn around marked containers in the world.",
 

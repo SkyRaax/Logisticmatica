@@ -11,6 +11,14 @@
 
 	"logisticmatica.config.hotkeys.name.markContainer": "Container markieren",
 	"logisticmatica.config.hotkeys.comment.markContainer": "Visiere einen Container an und drücke dies, um ihn zu markieren/entfernen. Inhalte markierter Container zählen zur Material-Liste und werden in der Welt hervorgehoben.",
+	"logisticmatica.config.hotkeys.name.openFocusPicker": "Fokus wählen",
+	"logisticmatica.config.hotkeys.comment.openFocusPicker": "Öffnet eine Auswahl, welches Schematic-Placement Logisticmatica fokussiert. Dessen Material-Liste zeigen HUD und Listen-Bildschirm an.",
+
+	"logisticmatica.gui.title.focus": "Logisticmatica - Fokus",
+	"logisticmatica.gui.label.focus.active": "Aktuell fokussiert: %s",
+	"logisticmatica.gui.label.focus.none": "keine",
+	"logisticmatica.gui.label.focus.no_placements": "Es sind keine Schematic-Placements geladen.",
+	"logisticmatica.gui.button.focus.clear": "Fokus aufheben (Liste ausblenden)",
 	"logisticmatica.config.colors.name.colorContainerHighlight": "Container-Highlight",
 	"logisticmatica.config.colors.comment.colorContainerHighlight": "Farbe der Umrandung um markierte Container in der Welt.",
 

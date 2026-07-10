@@ -9,13 +9,12 @@ import fi.dy.masa.malilib.util.GuiUtils;
 import fi.dy.masa.litematica.data.DataManager;
 import fi.dy.masa.litematica.materials.MaterialListBase;
 
-import com.skyraax.logisticmatica.Logisticmatica;
+import com.skyraax.logisticmatica.client.gui.GuiFocusPicker;
 import com.skyraax.logisticmatica.client.gui.GuiMaterialListView;
 
 /**
- * Hotkey callback that opens Logisticmatica's material-list screen for the currently active
- * Litematica material list. If none is active yet (the player hasn't opened a material list),
- * it logs a hint instead of crashing — a later step can auto-create one from the selected placement.
+ * Hotkey callback that opens Logisticmatica's material-list screen for the focused material list.
+ * If nothing is focused yet, it opens the focus picker instead of doing nothing.
  */
 public class OpenMaterialListCallback implements IHotkeyCallback {
 	@Override
@@ -23,9 +22,9 @@ public class OpenMaterialListCallback implements IHotkeyCallback {
 		MaterialListBase materialList = DataManager.getMaterialList();
 
 		if (materialList == null) {
-			Logisticmatica.LOGGER.info(
-					"[{}] Open material list: no active material list yet — open a schematic's material list once first.",
-					Logisticmatica.MOD_NAME);
+			GuiFocusPicker picker = new GuiFocusPicker();
+			picker.setParent(GuiUtils.getCurrentScreen());
+			GuiBase.openGui(picker);
 			return true;
 		}
 
