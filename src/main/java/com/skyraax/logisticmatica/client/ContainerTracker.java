@@ -1,7 +1,8 @@
 package com.skyraax.logisticmatica.client;
 
 import java.nio.file.Path;
-import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
@@ -27,7 +28,9 @@ import com.skyraax.logisticmatica.Logisticmatica;
  *
  * <p>Caching every opened container (not just the marked ones) means marking and unmarking takes
  * effect immediately — no need to re-open a chest after marking it. The cache is also what a
- * "where is item X" overview can be built on. It is cheap: one small item-to-count map per container.
+ * "where is item X" overview can be built on. It is cheap: one small item-to-count map per container,
+ * on the order of a couple of kilobytes, so even the {@link #MAX_CACHED_CONTAINERS} cap below is
+ * only a few megabytes. The cap exists so that a long session cannot grow the cache without bound.
  *
  * <p>Marked <em>positions</em> are persisted per world/dimension; the content cache is runtime-only,
  * refilled from the world (single-player) or when a container is opened (server). Positions are
@@ -36,8 +39,17 @@ import com.skyraax.logisticmatica.Logisticmatica;
 public class ContainerTracker {
 	private static final ContainerTracker INSTANCE = new ContainerTracker();
 
+	/**
+	 * How many container snapshots to keep. Marked containers are never evicted, so this only
+	 * bounds the "everything I ever looked into" cache that makes marking take effect instantly.
+	 */
+	private static final int MAX_CACHED_CONTAINERS = 2000;
+
 	private final Set<BlockPos> marked = new LinkedHashSet<>();
-	private final Map<BlockPos, Object2IntOpenHashMap<ItemType>> contents = new HashMap<>();
+
+	/** Access-ordered, so eviction drops the containers the player has not touched in the longest. */
+	private final Map<BlockPos, Object2IntOpenHashMap<ItemType>> contents =
+			new LinkedHashMap<>(64, 0.75f, true);
 
 	private ContainerTracker() {
 	}
@@ -79,6 +91,28 @@ public class ContainerTracker {
 	/** Caches a container's contents, whether or not it is currently marked. */
 	public void setContents(BlockPos canonical, Object2IntOpenHashMap<ItemType> counts) {
 		this.contents.put(canonical.immutable(), counts);
+		this.evictUntilWithinCap();
+	}
+
+	/**
+	 * Drops the least recently used <em>unmarked</em> snapshots until the cache fits the cap again.
+	 * Marked containers are skipped: their contents are what the material list counts, and
+	 * {@link #getTotalContents()} touches them regularly anyway, so they stay at the recent end.
+	 * If the player marks more than {@link #MAX_CACHED_CONTAINERS} containers the cache simply
+	 * grows to hold them — that is a deliberate choice by the player, not runaway caching.
+	 */
+	private void evictUntilWithinCap() {
+		if (this.contents.size() <= MAX_CACHED_CONTAINERS) {
+			return;
+		}
+
+		Iterator<BlockPos> iterator = this.contents.keySet().iterator();
+
+		while (iterator.hasNext() && this.contents.size() > MAX_CACHED_CONTAINERS) {
+			if (!this.marked.contains(iterator.next())) {
+				iterator.remove();
+			}
+		}
 	}
 
 	/** The cached contents of a container, or null if we have never looked inside it. */
