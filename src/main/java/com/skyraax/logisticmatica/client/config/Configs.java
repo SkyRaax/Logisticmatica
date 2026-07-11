@@ -75,11 +75,12 @@ public class Configs implements IConfigHandler {
 		public static final ConfigHotkey OPEN_MATERIAL_LIST     = new ConfigHotkey("openMaterialList", "").apply(HOTKEYS_KEY);
 		public static final ConfigHotkey OPEN_FOCUS_PICKER      = new ConfigHotkey("openFocusPicker", "").apply(HOTKEYS_KEY);
 		public static final ConfigHotkey OPEN_CONTAINER_OVERVIEW = new ConfigHotkey("openContainerOverview", "").apply(HOTKEYS_KEY);
+		public static final ConfigHotkey OPEN_SUBSTITUTIONS     = new ConfigHotkey("openSubstitutions", "").apply(HOTKEYS_KEY);
 		public static final ConfigHotkey TOGGLE_HUD             = new ConfigHotkey("toggleHud", "").apply(HOTKEYS_KEY);
 		public static final ConfigHotkey MARK_CONTAINER         = new ConfigHotkey("markContainer", "").apply(HOTKEYS_KEY);
 
 		public static final ImmutableList<IHotkey> HOTKEY_LIST = ImmutableList.of(
-				OPEN_MATERIAL_LIST, OPEN_FOCUS_PICKER, OPEN_CONTAINER_OVERVIEW, TOGGLE_HUD, MARK_CONTAINER
+				OPEN_MATERIAL_LIST, OPEN_FOCUS_PICKER, OPEN_CONTAINER_OVERVIEW, OPEN_SUBSTITUTIONS, TOGGLE_HUD, MARK_CONTAINER
 		);
 	}
 

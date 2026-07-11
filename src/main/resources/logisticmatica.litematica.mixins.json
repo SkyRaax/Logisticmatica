@@ -5,7 +5,9 @@
 	"compatibilityLevel": "JAVA_25",
 	"client": [
 		"MixinGuiMaterialList",
-		"MixinMaterialListUtils"
+		"MixinMaterialListUtils",
+		"MixinLitematicaBlockStateContainer",
+		"MixinSchematicHolder"
 	],
 	"injectors": {
 		"defaultRequire": 1

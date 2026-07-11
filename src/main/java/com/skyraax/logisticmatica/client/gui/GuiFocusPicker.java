@@ -18,6 +18,8 @@ import fi.dy.masa.litematica.materials.MaterialListSchematic;
 import fi.dy.masa.litematica.schematic.LitematicaSchematic;
 import fi.dy.masa.litematica.schematic.placement.SchematicPlacement;
 
+import com.skyraax.logisticmatica.client.FocusState;
+
 /**
  * Lets the player choose which schematic Logisticmatica focuses on — its material list is what the
  * HUD and the list screen show — or clear the focus entirely.
@@ -65,7 +67,7 @@ public class GuiFocusPicker extends GuiBase {
 		ButtonGeneric clear = new ButtonGeneric(x, y, buttonWidth, 20,
 				StringUtils.translate("logisticmatica.gui.button.focus.clear"));
 		clear.setEnabled(active != null);
-		this.addButton(clear, new ButtonListener(null, this));
+		this.addButton(clear, new ButtonListener(null, null, this));
 		y += 26;
 
 		List<SchematicPlacement> placements = DataManager.getSchematicPlacementManager().getAllSchematicsPlacements();
@@ -85,7 +87,8 @@ public class GuiFocusPicker extends GuiBase {
 					return;
 				}
 
-				this.addFocusButton(x, y, buttonWidth, placement.getName(), placement::getMaterialList);
+				this.addFocusButton(x, y, buttonWidth, placement.getName(), placement.getSchematic(),
+						placement::getMaterialList);
 				y += ENTRY_HEIGHT;
 			}
 
@@ -100,15 +103,16 @@ public class GuiFocusPicker extends GuiBase {
 					return;
 				}
 
-				this.addFocusButton(x, y, buttonWidth, schematic.getMetadata().getName(),
+				this.addFocusButton(x, y, buttonWidth, schematic.getMetadata().getName(), schematic,
 						() -> new MaterialListSchematic(schematic, false));
 				y += ENTRY_HEIGHT;
 			}
 		}
 	}
 
-	private void addFocusButton(int x, int y, int width, String name, Supplier<MaterialListBase> factory) {
-		this.addButton(new ButtonGeneric(x, y, width, 20, name), new ButtonListener(factory, this));
+	private void addFocusButton(int x, int y, int width, String name, LitematicaSchematic schematic,
+			Supplier<MaterialListBase> factory) {
+		this.addButton(new ButtonGeneric(x, y, width, 20, name), new ButtonListener(schematic, factory, this));
 	}
 
 	private int addSectionLabel(int x, int y, String translationKey) {
@@ -122,8 +126,11 @@ public class GuiFocusPicker extends GuiBase {
 		return y + ENTRY_HEIGHT > this.getScreenHeight() - 8;
 	}
 
-	/** A null factory clears the focus; otherwise the created list becomes the focused one. */
-	private void focus(@Nullable Supplier<MaterialListBase> factory) {
+	/** A null factory clears the focus; otherwise the created list becomes the focused one. The
+	 * schematic behind it is remembered in {@link FocusState} so substitution can find it later. */
+	private void focus(@Nullable LitematicaSchematic schematic, @Nullable Supplier<MaterialListBase> factory) {
+		FocusState.setSchematic(schematic);
+
 		if (factory == null) {
 			DataManager.setMaterialList(null);
 			return;
@@ -134,11 +141,12 @@ public class GuiFocusPicker extends GuiBase {
 		DataManager.setMaterialList(materialList);
 	}
 
-	private record ButtonListener(@Nullable Supplier<MaterialListBase> factory, GuiFocusPicker parent)
+	private record ButtonListener(@Nullable LitematicaSchematic schematic,
+			@Nullable Supplier<MaterialListBase> factory, GuiFocusPicker parent)
 			implements IButtonActionListener {
 		@Override
 		public void actionPerformedWithButton(ButtonBase button, int mouseButton) {
-			this.parent.focus(this.factory);
+			this.parent.focus(this.schematic, this.factory);
 			this.parent.initGui(); // refresh the label and the enabled state
 		}
 	}

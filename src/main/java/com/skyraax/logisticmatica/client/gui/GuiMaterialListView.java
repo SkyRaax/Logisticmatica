@@ -3,6 +3,7 @@ package com.skyraax.logisticmatica.client.gui;
 import fi.dy.masa.malilib.gui.GuiBase;
 import fi.dy.masa.malilib.gui.GuiListBase;
 import fi.dy.masa.malilib.gui.GuiTextFieldGeneric;
+import fi.dy.masa.malilib.gui.Message.MessageType;
 import fi.dy.masa.malilib.gui.button.ButtonBase;
 import fi.dy.masa.malilib.gui.button.ButtonGeneric;
 import fi.dy.masa.malilib.gui.button.ButtonOnOff;
@@ -11,11 +12,15 @@ import fi.dy.masa.malilib.gui.interfaces.ITextFieldListener;
 import fi.dy.masa.malilib.gui.wrappers.TextFieldType;
 import fi.dy.masa.malilib.interfaces.ICompletionListener;
 import fi.dy.masa.malilib.util.GuiUtils;
+import fi.dy.masa.malilib.util.InfoUtils;
 import fi.dy.masa.malilib.util.StringUtils;
 
 import fi.dy.masa.litematica.materials.MaterialListBase;
 import fi.dy.masa.litematica.materials.MaterialListEntry;
 import fi.dy.masa.litematica.materials.MaterialListUtils;
+import fi.dy.masa.litematica.schematic.LitematicaSchematic;
+
+import com.skyraax.logisticmatica.client.FocusState;
 
 /**
  * A lean material-list screen for Logisticmatica, built on MaLiLib's list-widget framework.
@@ -96,6 +101,9 @@ public class GuiMaterialListView extends GuiListBase<MaterialListEntry, WidgetMa
 		// "Refresh" button (re-creates the material list from the schematic/placement/area)
 		x += this.createButton(x, y, ButtonListener.Type.REFRESH) + gap;
 
+		// "Substitutions" button: edit the focused schematic's material swaps.
+		x += this.createButton(x, y, ButtonListener.Type.SUBSTITUTIONS) + gap;
+
 		// Back / close button, bottom-right
 		String backLabel = ButtonListener.Type.BACK.getDisplayName();
 		int backWidth = this.getStringWidth(backLabel) + 20;
@@ -125,6 +133,22 @@ public class GuiMaterialListView extends GuiListBase<MaterialListEntry, WidgetMa
 	{
 		// Returns to the parent screen, or to the game (null) when there is none.
 		GuiBase.openGui(this.getParent());
+	}
+
+	/** Opens the substitution editor for the focused schematic, or warns if nothing is focused. */
+	private void openSubstitutions()
+	{
+		LitematicaSchematic schematic = FocusState.getSchematic();
+
+		if (schematic == null)
+		{
+			InfoUtils.showGuiOrInGameMessage(MessageType.WARNING, "logisticmatica.message.substitutions.no_focus");
+			return;
+		}
+
+		GuiSubstitutions gui = new GuiSubstitutions(schematic);
+		gui.setParent(this);
+		GuiBase.openGui(gui);
 	}
 
 	@Override
@@ -168,6 +192,10 @@ public class GuiMaterialListView extends GuiListBase<MaterialListEntry, WidgetMa
 					materialList.reCreateMaterialList();
 					break;
 
+				case SUBSTITUTIONS:
+					this.parent.openSubstitutions();
+					return; // openSubstitutions swaps the screen; don't re-init this one.
+
 				case HIDE_COMPLETE:
 					materialList.setHideAvailable(!materialList.getHideAvailable());
 					// Restore the full pre-filtered set (minus ignored) so toggling the option off
@@ -192,6 +220,7 @@ public class GuiMaterialListView extends GuiListBase<MaterialListEntry, WidgetMa
 		private enum Type
 		{
 			REFRESH       ("logisticmatica.gui.button.material_list.refresh"),
+			SUBSTITUTIONS ("logisticmatica.gui.button.substitutions"),
 			HIDE_COMPLETE ("logisticmatica.gui.button.material_list.hide_complete"),
 			BACK          ("logisticmatica.gui.button.back");
 

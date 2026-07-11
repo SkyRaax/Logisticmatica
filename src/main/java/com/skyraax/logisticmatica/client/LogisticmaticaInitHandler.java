@@ -40,12 +40,16 @@ public class LogisticmaticaInitHandler implements IInitializationHandler {
 		Configs.Hotkeys.OPEN_MATERIAL_LIST.getKeybind().setCallback(new OpenMaterialListCallback());
 		Configs.Hotkeys.OPEN_FOCUS_PICKER.getKeybind().setCallback(new OpenFocusPickerCallback());
 		Configs.Hotkeys.OPEN_CONTAINER_OVERVIEW.getKeybind().setCallback(new OpenContainerOverviewCallback());
+		Configs.Hotkeys.OPEN_SUBSTITUTIONS.getKeybind().setCallback(new OpenSubstitutionsCallback());
 		Configs.Hotkeys.MARK_CONTAINER.getKeybind().setCallback(new MarkContainerCallback());
 
 		// Persistence + counting: load tracked containers on world join, and (single-player) keep
 		// their content snapshots fresh each tick so their items count towards the list.
 		WorldLoadHandler.getInstance().registerWorldLoadPostHandler(new ContainerTrackerWorldLoad());
 		TickHandler.getInstance().registerClientTickHandler(new ContainerContentTickHandler());
+
+		// Load persisted material substitutions once; they are re-applied to schematics on load/join.
+		SubstitutionManager.getInstance().load();
 
 		Logisticmatica.LOGGER.info("[{}] Config, HUD, hotkeys and container tracking registered.", Logisticmatica.MOD_NAME);
 	}

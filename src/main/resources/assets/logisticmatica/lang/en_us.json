@@ -6,6 +6,12 @@
 	"logisticmatica.gui.button.material_list.refresh": "Refresh",
 	"logisticmatica.gui.button.material_list.hide_complete": "Hide Complete: %s",
 	"logisticmatica.gui.button.back": "Back",
+	"logisticmatica.gui.button.substitutions": "Substitutions",
+
+	"logisticmatica.gui.title.substitutions": "Substitutions - %s",
+	"logisticmatica.gui.label.substitution.arrow": "→ %s",
+	"logisticmatica.gui.label.substitution.hint": "Hold the replacement block and click a material to swap it (empty hand resets).",
+	"logisticmatica.message.substitutions.no_focus": "Focus a schematic first, then open substitutions.",
 	"logisticmatica.gui.button.toggle_hud": "Logisticmatica HUD: %s",
 	"logisticmatica.hotkeys.category.main": "Logisticmatica Hotkeys",
 
@@ -15,6 +21,8 @@
 	"logisticmatica.config.hotkeys.comment.openFocusPicker": "Opens a picker for choosing what Logisticmatica focuses on: a placement (compared against the world, so it shows what is missing) or a loaded schematic (its total requirements). The focused material list is what the HUD and the list screen show.",
 	"logisticmatica.config.hotkeys.name.openContainerOverview": "Open Container Overview",
 	"logisticmatica.config.hotkeys.comment.openContainerOverview": "Opens the tracked-container overview: every marked container and what it holds, searchable by item to answer \"where is item X\".",
+	"logisticmatica.config.hotkeys.name.openSubstitutions": "Open Substitutions",
+	"logisticmatica.config.hotkeys.comment.openSubstitutions": "Opens the material-substitution editor for the focused schematic. Swaps are a non-destructive overlay: the ghost render, verifier and material list follow them, the .litematic file is never changed.",
 
 	"logisticmatica.gui.title.focus": "Logisticmatica - Focus",
 	"logisticmatica.gui.label.focus.active": "Currently focused: %s",
