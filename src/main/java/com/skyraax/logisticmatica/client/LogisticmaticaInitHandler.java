@@ -27,9 +27,11 @@ public class LogisticmaticaInitHandler implements IInitializationHandler {
 		Registry.CONFIG_SCREEN.registerConfigScreenFactory(
 				new ModInfo(Logisticmatica.MOD_ID, Logisticmatica.MOD_NAME, GuiConfigs::new));
 
-		// Renderers: the material HUD (in-game GUI overlay) and the tracked-container highlight (world).
+		// Renderers: the material HUD (in-game GUI overlay), the tracked-container highlight, and the
+		// floating item labels above marked containers (both world renderers).
 		RenderEventHandler.getInstance().registerInGameGuiRenderer(new MaterialHudRenderer());
 		RenderEventHandler.getInstance().registerWorldLastRenderer(new ContainerHighlightRenderer());
+		RenderEventHandler.getInstance().registerWorldLastRenderer(new ContainerLabelRenderer());
 
 		// Hotkeys: register the keybinds and attach callbacks.
 		InputEventHandler.getKeybindManager().registerKeybindProvider(InputHandler.getInstance());
@@ -37,6 +39,7 @@ public class LogisticmaticaInitHandler implements IInitializationHandler {
 				new KeyCallbackToggleBooleanConfigWithMessage(Configs.Hud.ENABLED));
 		Configs.Hotkeys.OPEN_MATERIAL_LIST.getKeybind().setCallback(new OpenMaterialListCallback());
 		Configs.Hotkeys.OPEN_FOCUS_PICKER.getKeybind().setCallback(new OpenFocusPickerCallback());
+		Configs.Hotkeys.OPEN_CONTAINER_OVERVIEW.getKeybind().setCallback(new OpenContainerOverviewCallback());
 		Configs.Hotkeys.MARK_CONTAINER.getKeybind().setCallback(new MarkContainerCallback());
 
 		// Persistence + counting: load tracked containers on world join, and (single-player) keep

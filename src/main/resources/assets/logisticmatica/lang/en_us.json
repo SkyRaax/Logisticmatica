@@ -13,6 +13,8 @@
 	"logisticmatica.config.hotkeys.comment.markContainer": "Look at a container and press this to mark/unmark it as tracked. Marked containers' contents count towards the material list and are highlighted in the world.",
 	"logisticmatica.config.hotkeys.name.openFocusPicker": "Choose Focus",
 	"logisticmatica.config.hotkeys.comment.openFocusPicker": "Opens a picker for choosing what Logisticmatica focuses on: a placement (compared against the world, so it shows what is missing) or a loaded schematic (its total requirements). The focused material list is what the HUD and the list screen show.",
+	"logisticmatica.config.hotkeys.name.openContainerOverview": "Open Container Overview",
+	"logisticmatica.config.hotkeys.comment.openContainerOverview": "Opens the tracked-container overview: every marked container and what it holds, searchable by item to answer \"where is item X\".",
 
 	"logisticmatica.gui.title.focus": "Logisticmatica - Focus",
 	"logisticmatica.gui.label.focus.active": "Currently focused: %s",
@@ -21,6 +23,12 @@
 	"logisticmatica.gui.label.focus.schematics": "Loaded schematics (total requirements)",
 	"logisticmatica.gui.label.focus.nothing_loaded": "Nothing loaded. Load or place a schematic in Litematica first.",
 	"logisticmatica.gui.button.focus.clear": "Clear focus (hide the list)",
+
+	"logisticmatica.gui.title.container_overview": "Tracked Containers (%s)",
+	"logisticmatica.gui.title.container_contents": "Container at %s  -  %s items",
+	"logisticmatica.gui.label.container.items": "%s items",
+	"logisticmatica.gui.label.container.distance": "%sm away",
+	"logisticmatica.gui.label.container.more": "+%s more",
 	"logisticmatica.config.colors.name.colorContainerHighlight": "Container Highlight",
 	"logisticmatica.config.colors.comment.colorContainerHighlight": "Colour of the outline drawn around marked containers in the world.",
 
@@ -53,6 +61,8 @@
 	"logisticmatica.config.hud.comment.hudBackground": "Draw a translucent background behind the HUD.",
 	"logisticmatica.config.hud.name.hudShowItemIcons": "Show Item Icons",
 	"logisticmatica.config.hud.comment.hudShowItemIcons": "Draw the item icon next to each row.",
+	"logisticmatica.config.hud.name.hudContainerLabels": "Container Labels",
+	"logisticmatica.config.hud.comment.hudContainerLabels": "Float a label above nearby marked containers listing their most-plentiful items.",
 
 	"logisticmatica.config.colors.name.colorText": "Text Color",
 	"logisticmatica.config.colors.comment.colorText": "Color of the normal HUD text.",

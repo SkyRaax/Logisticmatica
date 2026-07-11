@@ -46,10 +46,11 @@ public class Configs implements IConfigHandler {
 		public static final ConfigBoolean    SHOW_HEADER     = new ConfigBoolean("hudShowHeader", true).apply(HUD_KEY);
 		public static final ConfigBoolean    SHOW_BACKGROUND = new ConfigBoolean("hudBackground", true).apply(HUD_KEY);
 		public static final ConfigBoolean    SHOW_ITEM_ICONS = new ConfigBoolean("hudShowItemIcons", true).apply(HUD_KEY);
+		public static final ConfigBoolean    SHOW_CONTAINER_LABELS = new ConfigBoolean("hudContainerLabels", true).apply(HUD_KEY);
 
 		public static final ImmutableList<IConfigBase> OPTIONS = ImmutableList.of(
 				ENABLED, RENDER_IN_GUIS, ALIGNMENT, OFFSET_X, OFFSET_Y, SCALE, MAX_LINES,
-				HIDE_COMPLETE, ONLY_MISSING, SHOW_HEADER, SHOW_BACKGROUND, SHOW_ITEM_ICONS
+				HIDE_COMPLETE, ONLY_MISSING, SHOW_HEADER, SHOW_BACKGROUND, SHOW_ITEM_ICONS, SHOW_CONTAINER_LABELS
 		);
 	}
 
@@ -71,13 +72,14 @@ public class Configs implements IConfigHandler {
 	private static final String HOTKEYS_KEY = Logisticmatica.MOD_ID + ".config.hotkeys";
 
 	public static class Hotkeys {
-		public static final ConfigHotkey OPEN_MATERIAL_LIST = new ConfigHotkey("openMaterialList", "").apply(HOTKEYS_KEY);
-		public static final ConfigHotkey OPEN_FOCUS_PICKER  = new ConfigHotkey("openFocusPicker", "").apply(HOTKEYS_KEY);
-		public static final ConfigHotkey TOGGLE_HUD         = new ConfigHotkey("toggleHud", "").apply(HOTKEYS_KEY);
-		public static final ConfigHotkey MARK_CONTAINER     = new ConfigHotkey("markContainer", "").apply(HOTKEYS_KEY);
+		public static final ConfigHotkey OPEN_MATERIAL_LIST     = new ConfigHotkey("openMaterialList", "").apply(HOTKEYS_KEY);
+		public static final ConfigHotkey OPEN_FOCUS_PICKER      = new ConfigHotkey("openFocusPicker", "").apply(HOTKEYS_KEY);
+		public static final ConfigHotkey OPEN_CONTAINER_OVERVIEW = new ConfigHotkey("openContainerOverview", "").apply(HOTKEYS_KEY);
+		public static final ConfigHotkey TOGGLE_HUD             = new ConfigHotkey("toggleHud", "").apply(HOTKEYS_KEY);
+		public static final ConfigHotkey MARK_CONTAINER         = new ConfigHotkey("markContainer", "").apply(HOTKEYS_KEY);
 
 		public static final ImmutableList<IHotkey> HOTKEY_LIST = ImmutableList.of(
-				OPEN_MATERIAL_LIST, OPEN_FOCUS_PICKER, TOGGLE_HUD, MARK_CONTAINER
+				OPEN_MATERIAL_LIST, OPEN_FOCUS_PICKER, OPEN_CONTAINER_OVERVIEW, TOGGLE_HUD, MARK_CONTAINER
 		);
 	}
 

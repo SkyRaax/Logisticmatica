@@ -13,6 +13,8 @@
 	"logisticmatica.config.hotkeys.comment.markContainer": "Visiere einen Container an und drücke dies, um ihn zu markieren/entfernen. Inhalte markierter Container zählen zur Material-Liste und werden in der Welt hervorgehoben.",
 	"logisticmatica.config.hotkeys.name.openFocusPicker": "Fokus wählen",
 	"logisticmatica.config.hotkeys.comment.openFocusPicker": "Öffnet eine Auswahl, worauf Logisticmatica fokussiert: eine Platzierung (mit der Welt abgeglichen, zeigt also das Fehlende) oder eine geladene Schematic (ihr Gesamtbedarf). Die fokussierte Material-Liste zeigen HUD und Listen-Bildschirm an.",
+	"logisticmatica.config.hotkeys.name.openContainerOverview": "Container-Übersicht öffnen",
+	"logisticmatica.config.hotkeys.comment.openContainerOverview": "Öffnet die Übersicht der verfolgten Container: jeder markierte Container und sein Inhalt, per Item durchsuchbar für die Frage \"wo ist Item X\".",
 
 	"logisticmatica.gui.title.focus": "Logisticmatica - Fokus",
 	"logisticmatica.gui.label.focus.active": "Aktuell fokussiert: %s",
@@ -21,6 +23,12 @@
 	"logisticmatica.gui.label.focus.schematics": "Geladene Schematics (Gesamtbedarf)",
 	"logisticmatica.gui.label.focus.nothing_loaded": "Nichts geladen. Lade oder platziere zuerst eine Schematic in Litematica.",
 	"logisticmatica.gui.button.focus.clear": "Fokus aufheben (Liste ausblenden)",
+
+	"logisticmatica.gui.title.container_overview": "Verfolgte Container (%s)",
+	"logisticmatica.gui.title.container_contents": "Container bei %s  -  %s Items",
+	"logisticmatica.gui.label.container.items": "%s Items",
+	"logisticmatica.gui.label.container.distance": "%sm entfernt",
+	"logisticmatica.gui.label.container.more": "+%s weitere",
 	"logisticmatica.config.colors.name.colorContainerHighlight": "Container-Highlight",
 	"logisticmatica.config.colors.comment.colorContainerHighlight": "Farbe der Umrandung um markierte Container in der Welt.",
 
@@ -53,6 +61,8 @@
 	"logisticmatica.config.hud.comment.hudBackground": "Zeichnet einen halbtransparenten Hintergrund hinter dem HUD.",
 	"logisticmatica.config.hud.name.hudShowItemIcons": "Item-Symbole anzeigen",
 	"logisticmatica.config.hud.comment.hudShowItemIcons": "Zeichnet das Item-Symbol neben jeder Zeile.",
+	"logisticmatica.config.hud.name.hudContainerLabels": "Container-Beschriftungen",
+	"logisticmatica.config.hud.comment.hudContainerLabels": "Zeigt über nahen markierten Containern eine schwebende Beschriftung mit ihren häufigsten Items.",
 
 	"logisticmatica.config.colors.name.colorText": "Textfarbe",
 	"logisticmatica.config.colors.comment.colorText": "Farbe des normalen HUD-Textes.",

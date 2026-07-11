@@ -47,9 +47,12 @@ public class ContainerTracker {
 
 	private final Set<BlockPos> marked = new LinkedHashSet<>();
 
-	/** Access-ordered, so eviction drops the containers the player has not touched in the longest. */
-	private final Map<BlockPos, Object2IntOpenHashMap<ItemType>> contents =
-			new LinkedHashMap<>(64, 0.75f, true);
+	/**
+	 * Insertion-ordered, so eviction drops the containers cached longest ago first. Deliberately
+	 * <em>not</em> access-ordered: reads happen from the render path, and an access-ordered map
+	 * mutates on every {@code get}, which would be a footgun if a read ever ran off-thread.
+	 */
+	private final Map<BlockPos, Object2IntOpenHashMap<ItemType>> contents = new LinkedHashMap<>();
 
 	private ContainerTracker() {
 	}
@@ -95,11 +98,10 @@ public class ContainerTracker {
 	}
 
 	/**
-	 * Drops the least recently used <em>unmarked</em> snapshots until the cache fits the cap again.
-	 * Marked containers are skipped: their contents are what the material list counts, and
-	 * {@link #getTotalContents()} touches them regularly anyway, so they stay at the recent end.
-	 * If the player marks more than {@link #MAX_CACHED_CONTAINERS} containers the cache simply
-	 * grows to hold them — that is a deliberate choice by the player, not runaway caching.
+	 * Drops the oldest-cached <em>unmarked</em> snapshots until the cache fits the cap again.
+	 * Marked containers are skipped: their contents are what the material list counts, so they are
+	 * never evicted. If the player marks more than {@link #MAX_CACHED_CONTAINERS} containers the
+	 * cache simply grows to hold them — that is a deliberate choice by the player, not runaway caching.
 	 */
 	private void evictUntilWithinCap() {
 		if (this.contents.size() <= MAX_CACHED_CONTAINERS) {
