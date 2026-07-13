@@ -38,6 +38,7 @@ public class LogisticmaticaInitHandler implements IInitializationHandler {
 		InputEventHandler.getKeybindManager().registerKeybindProvider(InputHandler.getInstance());
 		Configs.Hotkeys.TOGGLE_HUD.getKeybind().setCallback(
 				new KeyCallbackToggleBooleanConfigWithMessage(Configs.Hud.ENABLED));
+		Configs.Hotkeys.OPEN_MENU.getKeybind().setCallback(new OpenMenuCallback());
 		Configs.Hotkeys.OPEN_MATERIAL_LIST.getKeybind().setCallback(new OpenMaterialListCallback());
 		Configs.Hotkeys.OPEN_FOCUS_PICKER.getKeybind().setCallback(new OpenFocusPickerCallback());
 		Configs.Hotkeys.OPEN_CONTAINER_OVERVIEW.getKeybind().setCallback(new OpenContainerOverviewCallback());

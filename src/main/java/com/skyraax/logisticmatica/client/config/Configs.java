@@ -74,6 +74,7 @@ public class Configs implements IConfigHandler {
 	private static final String HOTKEYS_KEY = Logisticmatica.MOD_ID + ".config.hotkeys";
 
 	public static class Hotkeys {
+		public static final ConfigHotkey OPEN_MENU             = new ConfigHotkey("openMenu", "").apply(HOTKEYS_KEY);
 		public static final ConfigHotkey OPEN_MATERIAL_LIST     = new ConfigHotkey("openMaterialList", "").apply(HOTKEYS_KEY);
 		public static final ConfigHotkey OPEN_FOCUS_PICKER      = new ConfigHotkey("openFocusPicker", "").apply(HOTKEYS_KEY);
 		public static final ConfigHotkey OPEN_CONTAINER_OVERVIEW = new ConfigHotkey("openContainerOverview", "").apply(HOTKEYS_KEY);
@@ -83,7 +84,7 @@ public class Configs implements IConfigHandler {
 		public static final ConfigHotkey MARK_CONTAINER         = new ConfigHotkey("markContainer", "").apply(HOTKEYS_KEY);
 
 		public static final ImmutableList<IHotkey> HOTKEY_LIST = ImmutableList.of(
-				OPEN_MATERIAL_LIST, OPEN_FOCUS_PICKER, OPEN_CONTAINER_OVERVIEW, OPEN_SUBSTITUTIONS,
+				OPEN_MENU, OPEN_MATERIAL_LIST, OPEN_FOCUS_PICKER, OPEN_CONTAINER_OVERVIEW, OPEN_SUBSTITUTIONS,
 				CYCLE_HUD_PAGE, TOGGLE_HUD, MARK_CONTAINER
 		);
 	}

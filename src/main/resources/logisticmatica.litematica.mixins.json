@@ -4,6 +4,7 @@
 	"package": "com.skyraax.logisticmatica.mixin.litematica",
 	"compatibilityLevel": "JAVA_25",
 	"client": [
+		"MixinGuiMainMenu",
 		"MixinGuiMaterialList",
 		"MixinMaterialListUtils",
 		"MixinLitematicaBlockStateContainer",
