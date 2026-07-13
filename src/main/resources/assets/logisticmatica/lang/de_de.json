@@ -105,6 +105,8 @@
 	"logisticmatica.config.hud.comment.hudLabelSeeThrough": "Zeichnet die schwebenden Container-Beschriftungen durch Wände. Aus = hinter Blöcken verdeckt.",
 	"logisticmatica.config.hud.name.hudOutlineSeeThrough": "Umrandung durch Wände",
 	"logisticmatica.config.hud.comment.hudOutlineSeeThrough": "Zeichnet die Umrandung markierter Container durch Wände. Aus = hinter Blöcken verdeckt.",
+	"logisticmatica.config.hud.name.hudOutlineFill": "Umrandung füllen",
+	"logisticmatica.config.hud.comment.hudOutlineFill": "Füllt markierte Container halbtransparent aus, nicht nur die Umrandung - für ein deutlicheres Highlight.",
 	"logisticmatica.config.hud.name.hudPeekAlignment": "Vorschau-Position",
 	"logisticmatica.config.hud.comment.hudPeekAlignment": "An welcher Bildschirmecke das Vorschau-Panel verankert wird (weg von anderen Overlays wie Jade schieben).",
 	"logisticmatica.config.hud.name.hudPeekOffsetX": "Vorschau-Versatz X",

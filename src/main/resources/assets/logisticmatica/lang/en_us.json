@@ -105,6 +105,8 @@
 	"logisticmatica.config.hud.comment.hudLabelSeeThrough": "Draw the floating container labels through walls. Off means they are hidden behind blocks.",
 	"logisticmatica.config.hud.name.hudOutlineSeeThrough": "Outline Through Walls",
 	"logisticmatica.config.hud.comment.hudOutlineSeeThrough": "Draw the marked-container outline through walls. Off means it is hidden behind blocks.",
+	"logisticmatica.config.hud.name.hudOutlineFill": "Outline Fill",
+	"logisticmatica.config.hud.comment.hudOutlineFill": "Fill marked containers with a translucent colour, not just an outline, for a more solid highlight.",
 	"logisticmatica.config.hud.name.hudPeekAlignment": "Peek Position",
 	"logisticmatica.config.hud.comment.hudPeekAlignment": "Which screen corner the container-peek panel is anchored to (move it clear of other overlays like Jade).",
 	"logisticmatica.config.hud.name.hudPeekOffsetX": "Peek Offset X",

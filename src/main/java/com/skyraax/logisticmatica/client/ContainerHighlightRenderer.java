@@ -42,6 +42,9 @@ public class ContainerHighlightRenderer implements IRenderer {
 	private static final float EXPAND = 0.01f;
 	private static final float LINE_WIDTH = 4.0f;
 
+	/** Alpha multiplier for the translucent box fill, relative to the outline colour's own alpha. */
+	private static final float FILL_ALPHA = 0.22f;
+
 	/** Beyond this distance (in blocks) a highlight is not worth drawing. */
 	private static final double MAX_DISTANCE = 128.0;
 	private static final double MAX_DISTANCE_SQ = MAX_DISTANCE * MAX_DISTANCE;
@@ -80,18 +83,41 @@ public class ContainerHighlightRenderer implements IRenderer {
 		}
 
 		Color4f color = Configs.Colors.CONTAINER_HIGHLIGHT.getColor();
+		boolean seeThrough = Configs.Hud.OUTLINE_SEE_THROUGH.getBooleanValue();
 
-		// See-through (no depth) or occluded (depth-tested) based on config.
-		RenderPipeline pipeline = Configs.Hud.OUTLINE_SEE_THROUGH.getBooleanValue()
+		// Translucent filled sides first (a solid, chest-tracker-style highlight), then the crisp
+		// edges drawn on top. Both honour the see-through toggle (no-depth vs depth-tested pipeline).
+		if (Configs.Hud.OUTLINE_FILL.getBooleanValue()) {
+			Vec3 camPos = RenderUtils.camPos();
+			Color4f fill = new Color4f(color.r, color.g, color.b, color.a * FILL_ALPHA);
+			RenderPipeline fillPipeline = seeThrough
+					? MaLiLibPipelines.POSITION_COLOR_TRANSLUCENT_NO_DEPTH_NO_CULL
+					: MaLiLibPipelines.POSITION_COLOR_TRANSLUCENT_LEQUAL_DEPTH;
+			RenderContext fillCtx = new RenderContext(() -> "logisticmatica:container_fill", fillPipeline, 0);
+			BufferBuilder fillBuffer = fillCtx.getBuilder();
+
+			for (BlockPos block : this.visible) {
+				RenderUtils.drawBlockBoundingBoxSidesBatchedQuads(block, camPos, fill, EXPAND, fillBuffer);
+			}
+
+			this.flush(fillCtx, fillBuffer);
+		}
+
+		RenderPipeline linePipeline = seeThrough
 				? MaLiLibPipelines.DEBUG_LINES_MASA_SIMPLE_NO_DEPTH_NO_CULL
 				: MaLiLibPipelines.DEBUG_LINES_MASA_SIMPLE_LEQUAL_DEPTH;
-		RenderContext ctx = new RenderContext(() -> "logisticmatica:container_highlight", pipeline, 0);
+		RenderContext ctx = new RenderContext(() -> "logisticmatica:container_highlight", linePipeline, 0);
 		BufferBuilder buffer = ctx.getBuilder();
 
 		for (BlockPos block : this.visible) {
 			RenderUtils.drawBlockBoundingBoxOutlinesBatchedLinesSimple(block, color, EXPAND, LINE_WIDTH, buffer);
 		}
 
+		this.flush(ctx, buffer);
+	}
+
+	/** Builds, draws and closes one batched render context, logging (not throwing) on failure. */
+	private void flush(RenderContext ctx, BufferBuilder buffer) {
 		try {
 			MeshData meshData = buffer.build();
 

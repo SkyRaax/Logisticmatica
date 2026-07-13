@@ -50,6 +50,7 @@ public class Configs implements IConfigHandler {
 		public static final ConfigBoolean    SHOW_CONTAINER_LABELS = new ConfigBoolean("hudContainerLabels", true).apply(HUD_KEY);
 		public static final ConfigBoolean    LABEL_SEE_THROUGH     = new ConfigBoolean("hudLabelSeeThrough", false).apply(HUD_KEY);
 		public static final ConfigBoolean    OUTLINE_SEE_THROUGH   = new ConfigBoolean("hudOutlineSeeThrough", true).apply(HUD_KEY);
+		public static final ConfigBoolean    OUTLINE_FILL          = new ConfigBoolean("hudOutlineFill", true).apply(HUD_KEY);
 		public static final ConfigBoolean    SHOW_CONTAINER_PEEK   = new ConfigBoolean("hudContainerPeek", true).apply(HUD_KEY);
 		public static final ConfigOptionList PEEK_ALIGNMENT        = new ConfigOptionList("hudPeekAlignment", HudAlignment.TOP_RIGHT).apply(HUD_KEY);
 		public static final ConfigInteger    PEEK_OFFSET_X         = new ConfigInteger("hudPeekOffsetX", 4, 0, 32000).apply(HUD_KEY);
@@ -59,7 +60,7 @@ public class Configs implements IConfigHandler {
 		public static final ImmutableList<IConfigBase> OPTIONS = ImmutableList.of(
 				ENABLED, RENDER_IN_GUIS, ALIGNMENT, OFFSET_X, OFFSET_Y, SCALE, MAX_LINES,
 				HIDE_COMPLETE, ONLY_MISSING, SHOW_HEADER, SHOW_BACKGROUND, SHOW_ITEM_ICONS,
-				SHOW_CONTAINER_LABELS, LABEL_SEE_THROUGH, OUTLINE_SEE_THROUGH,
+				SHOW_CONTAINER_LABELS, LABEL_SEE_THROUGH, OUTLINE_SEE_THROUGH, OUTLINE_FILL,
 				SHOW_CONTAINER_PEEK, PEEK_ALIGNMENT, PEEK_OFFSET_X, PEEK_OFFSET_Y, PEEK_SCALE
 		);
 	}
