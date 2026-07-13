@@ -47,10 +47,12 @@ public class Configs implements IConfigHandler {
 		public static final ConfigBoolean    SHOW_BACKGROUND = new ConfigBoolean("hudBackground", true).apply(HUD_KEY);
 		public static final ConfigBoolean    SHOW_ITEM_ICONS = new ConfigBoolean("hudShowItemIcons", true).apply(HUD_KEY);
 		public static final ConfigBoolean    SHOW_CONTAINER_LABELS = new ConfigBoolean("hudContainerLabels", true).apply(HUD_KEY);
+		public static final ConfigBoolean    SHOW_CONTAINER_PEEK   = new ConfigBoolean("hudContainerPeek", true).apply(HUD_KEY);
 
 		public static final ImmutableList<IConfigBase> OPTIONS = ImmutableList.of(
 				ENABLED, RENDER_IN_GUIS, ALIGNMENT, OFFSET_X, OFFSET_Y, SCALE, MAX_LINES,
-				HIDE_COMPLETE, ONLY_MISSING, SHOW_HEADER, SHOW_BACKGROUND, SHOW_ITEM_ICONS, SHOW_CONTAINER_LABELS
+				HIDE_COMPLETE, ONLY_MISSING, SHOW_HEADER, SHOW_BACKGROUND, SHOW_ITEM_ICONS,
+				SHOW_CONTAINER_LABELS, SHOW_CONTAINER_PEEK
 		);
 	}
 

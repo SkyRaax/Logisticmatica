@@ -74,7 +74,9 @@
 	"logisticmatica.config.hud.name.hudShowItemIcons": "Item-Symbole anzeigen",
 	"logisticmatica.config.hud.comment.hudShowItemIcons": "Zeichnet das Item-Symbol neben jeder Zeile.",
 	"logisticmatica.config.hud.name.hudContainerLabels": "Container-Beschriftungen",
-	"logisticmatica.config.hud.comment.hudContainerLabels": "Zeigt über nahen markierten Containern eine schwebende Beschriftung mit ihren häufigsten Items.",
+	"logisticmatica.config.hud.comment.hudContainerLabels": "Zeigt über nahen markierten Containern eine schwebende Text-Beschriftung mit ihren häufigsten Items.",
+	"logisticmatica.config.hud.name.hudContainerPeek": "Container-Vorschau",
+	"logisticmatica.config.hud.comment.hudContainerPeek": "Zeigt beim Anschauen eines markierten Containers ein Inventar-Panel mit seinem Inhalt (aus dem Cache, funktioniert also auch geschlossen oder aus der Ferne).",
 
 	"logisticmatica.config.colors.name.colorText": "Textfarbe",
 	"logisticmatica.config.colors.comment.colorText": "Farbe des normalen HUD-Textes.",

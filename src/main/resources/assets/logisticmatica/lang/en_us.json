@@ -74,7 +74,9 @@
 	"logisticmatica.config.hud.name.hudShowItemIcons": "Show Item Icons",
 	"logisticmatica.config.hud.comment.hudShowItemIcons": "Draw the item icon next to each row.",
 	"logisticmatica.config.hud.name.hudContainerLabels": "Container Labels",
-	"logisticmatica.config.hud.comment.hudContainerLabels": "Float a label above nearby marked containers listing their most-plentiful items.",
+	"logisticmatica.config.hud.comment.hudContainerLabels": "Float a text label above nearby marked containers listing their most-plentiful items.",
+	"logisticmatica.config.hud.name.hudContainerPeek": "Container Peek",
+	"logisticmatica.config.hud.comment.hudContainerPeek": "When looking at a marked container, show an inventory panel of its contents (from the cache, so it works even closed or far away).",
 
 	"logisticmatica.config.colors.name.colorText": "Text Color",
 	"logisticmatica.config.colors.comment.colorText": "Color of the normal HUD text.",

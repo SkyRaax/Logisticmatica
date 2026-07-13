@@ -27,9 +27,10 @@ public class LogisticmaticaInitHandler implements IInitializationHandler {
 		Registry.CONFIG_SCREEN.registerConfigScreenFactory(
 				new ModInfo(Logisticmatica.MOD_ID, Logisticmatica.MOD_NAME, GuiConfigs::new));
 
-		// Renderers: the material HUD (in-game GUI overlay), the tracked-container highlight, and the
-		// floating item labels above marked containers (both world renderers).
+		// Renderers: the material HUD and the chest-peek panel (in-game GUI overlays), plus the
+		// tracked-container highlight and the floating item labels (world renderers).
 		RenderEventHandler.getInstance().registerInGameGuiRenderer(new MaterialHudRenderer());
+		RenderEventHandler.getInstance().registerInGameGuiRenderer(new ContainerPeekRenderer());
 		RenderEventHandler.getInstance().registerWorldLastRenderer(new ContainerHighlightRenderer());
 		RenderEventHandler.getInstance().registerWorldLastRenderer(new ContainerLabelRenderer());
 
