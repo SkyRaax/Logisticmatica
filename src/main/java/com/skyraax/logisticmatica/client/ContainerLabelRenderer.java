@@ -48,7 +48,10 @@ public class ContainerLabelRenderer implements IRenderer {
 
 	@Override
 	public void onExtractWorldLast(DeltaTracker deltaTracker, Camera camera, float ticks, ProfilerFiller profiler) {
-		if (!Configs.Hud.SHOW_CONTAINER_LABELS.getBooleanValue() || ContainerTracker.getInstance().isEmpty()) {
+		// The text label is the fallback; when icons are enabled the LevelRenderer mixin draws those instead.
+		if (!Configs.Hud.SHOW_CONTAINER_LABELS.getBooleanValue()
+				|| Configs.Hud.LABEL_ICONS.getBooleanValue()
+				|| ContainerTracker.getInstance().isEmpty()) {
 			this.plates.clear();
 			return;
 		}
