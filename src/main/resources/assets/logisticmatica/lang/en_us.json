@@ -9,8 +9,10 @@
 	"logisticmatica.gui.button.substitutions": "Substitutions",
 
 	"logisticmatica.gui.title.substitutions": "Substitutions - %s",
+	"logisticmatica.gui.title.block_picker": "Replace %s with...",
 	"logisticmatica.gui.label.substitution.arrow": "→ %s",
-	"logisticmatica.gui.label.substitution.hint": "Hold the replacement block and click a material to swap it (empty hand resets).",
+	"logisticmatica.gui.label.substitution.hint": "Click a material to choose a replacement; click [x] to reset it.",
+	"logisticmatica.gui.button.substitution.reset_all": "Reset All",
 	"logisticmatica.message.substitutions.no_focus": "Focus a schematic first, then open substitutions.",
 	"logisticmatica.gui.button.toggle_hud": "Logisticmatica HUD: %s",
 	"logisticmatica.hotkeys.category.main": "Logisticmatica Hotkeys",
@@ -23,6 +25,8 @@
 	"logisticmatica.config.hotkeys.comment.openContainerOverview": "Opens the tracked-container overview: every marked container and what it holds, searchable by item to answer \"where is item X\".",
 	"logisticmatica.config.hotkeys.name.openSubstitutions": "Open Substitutions",
 	"logisticmatica.config.hotkeys.comment.openSubstitutions": "Opens the material-substitution editor for the focused schematic. Swaps are a non-destructive overlay: the ghost render, verifier and material list follow them, the .litematic file is never changed.",
+	"logisticmatica.config.hotkeys.name.cycleHudPage": "Cycle HUD Page",
+	"logisticmatica.config.hotkeys.comment.cycleHudPage": "Steps the material HUD to the next page when the list is longer than fits on screen.",
 
 	"logisticmatica.gui.title.focus": "Logisticmatica - Focus",
 	"logisticmatica.gui.label.focus.active": "Currently focused: %s",

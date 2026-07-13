@@ -89,6 +89,26 @@ public final class Substitutions {
 		return out;
 	}
 
+	/** Every block that can be a substitution target — i.e. has an item so it can be picked. Cached. */
+	private static List<Block> substitutableBlocks;
+
+	public static List<Block> substitutableBlocks() {
+		if (substitutableBlocks == null) {
+			List<Block> blocks = new ArrayList<>();
+
+			for (Block block : BuiltInRegistries.BLOCK) {
+				if (block != Blocks.AIR && block.asItem() != Items.AIR) {
+					blocks.add(block);
+				}
+			}
+
+			blocks.sort(Comparator.comparing(block -> block.getName().getString()));
+			substitutableBlocks = blocks;
+		}
+
+		return substitutableBlocks;
+	}
+
 	public static String idOf(Block block) {
 		return BuiltInRegistries.BLOCK.getKey(block).toString();
 	}

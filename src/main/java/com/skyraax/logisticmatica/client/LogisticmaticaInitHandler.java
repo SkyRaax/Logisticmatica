@@ -41,6 +41,10 @@ public class LogisticmaticaInitHandler implements IInitializationHandler {
 		Configs.Hotkeys.OPEN_FOCUS_PICKER.getKeybind().setCallback(new OpenFocusPickerCallback());
 		Configs.Hotkeys.OPEN_CONTAINER_OVERVIEW.getKeybind().setCallback(new OpenContainerOverviewCallback());
 		Configs.Hotkeys.OPEN_SUBSTITUTIONS.getKeybind().setCallback(new OpenSubstitutionsCallback());
+		Configs.Hotkeys.CYCLE_HUD_PAGE.getKeybind().setCallback((action, key) -> {
+			MaterialHudRenderer.cycleHudPage();
+			return true;
+		});
 		Configs.Hotkeys.MARK_CONTAINER.getKeybind().setCallback(new MarkContainerCallback());
 
 		// Persistence + counting: load tracked containers on world join, and (single-player) keep

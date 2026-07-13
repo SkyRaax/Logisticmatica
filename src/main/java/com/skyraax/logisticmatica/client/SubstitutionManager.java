@@ -63,6 +63,14 @@ public class SubstitutionManager {
 		return map != null && !map.isEmpty();
 	}
 
+	/** Removes every substitution for this schematic. */
+	public void clearAll(LitematicaSchematic schematic) {
+		if (this.substitutions.remove(key(schematic)) != null) {
+			this.apply(schematic);
+			this.save();
+		}
+	}
+
 	/** Substitutes {@code from} with {@code to} (or removes the substitution when {@code to} is null or equal). */
 	public void setSubstitute(LitematicaSchematic schematic, Block from, @Nullable Block to) {
 		String key = key(schematic);

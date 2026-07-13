@@ -26,9 +26,20 @@ import com.skyraax.logisticmatica.client.config.Configs;
  * and draws it via MaLiLib's {@link GuiContext}, honouring our own alignment / scale / colour /
  * column configuration. Unlike Litematica's built-in HUD it has no hard 10-line cap
  * ({@code hudMaxLines = 0} shows the whole list) and shows a have/need column per item.
+ *
+ * <p>The list is auto-fitted to the screen height so it can never run off the bottom; anything that
+ * does not fit spills onto further pages, which the "Cycle HUD Page" hotkey steps through.
  */
 public class MaterialHudRenderer implements IRenderer {
+	/** Which page of the auto-fitted HUD to show; advanced by {@link #cycleHudPage()}. */
+	private static int hudPage;
+
 	private long lastAvailUpdate;
+
+	/** Steps the material HUD to the next page (wraps around). Bound to a hotkey. */
+	public static void cycleHudPage() {
+		hudPage++;
+	}
 
 	@Override
 	public void onExtractGuiOverlayPost(GuiContext ctx, float partialTicks, ProfilerFiller profiler) {
@@ -102,11 +113,6 @@ public class MaterialHudRenderer implements IRenderer {
 
 		final double scale = Math.max(0.1, Configs.Hud.SCALE.getDoubleValue());
 		final HudAlignment alignment = (HudAlignment) Configs.Hud.ALIGNMENT.getOptionListValue();
-		int maxLines = Configs.Hud.MAX_LINES.getIntegerValue();
-		if (maxLines <= 0) {
-			maxLines = list.size();
-		}
-		final int rows = Math.min(list.size(), maxLines);
 
 		final boolean showHeader = Configs.Hud.SHOW_HEADER.getBooleanValue();
 		final boolean showBg = Configs.Hud.SHOW_BACKGROUND.getBooleanValue();
@@ -119,17 +125,37 @@ public class MaterialHudRenderer implements IRenderer {
 		final int colMissing = Configs.Colors.MISSING.getIntegerValue();
 		final int colBg = Configs.Colors.BACKGROUND.getIntegerValue();
 
+		final int pad = 3;
+		final int columnGap = 10;
 		final int lineHeight = showIcons ? 18 : (font.lineHeight + 2);
 		final int iconGap = showIcons ? 20 : 0;
 		final int headerHeight = showHeader ? font.lineHeight + 4 : 0;
 
-		// Pre-compute count strings + column widths.
+		final int offX = Configs.Hud.OFFSET_X.getIntegerValue();
+		final int offY = Configs.Hud.OFFSET_Y.getIntegerValue();
+		final int screenW = (int) (GuiUtils.getScaledWindowWidth() / scale);
+		final int screenH = (int) (GuiUtils.getScaledWindowHeight() / scale);
+
+		// Auto-fit: cap the rows to what fits in the available height, and page through the rest.
+		final int availableH = Math.max(lineHeight, screenH - offY - 8);
+		final int rowsThatFit = Math.max(1, (availableH - headerHeight - pad * 2) / lineHeight);
+
+		final int configMax = Configs.Hud.MAX_LINES.getIntegerValue();
+		int perPage = configMax > 0 ? Math.min(configMax, rowsThatFit) : rowsThatFit;
+		perPage = Math.max(1, Math.min(perPage, list.size()));
+
+		final int pageCount = (list.size() + perPage - 1) / perPage;
+		final int page = ((hudPage % pageCount) + pageCount) % pageCount;
+		final int startIdx = page * perPage;
+		final int rows = Math.min(perPage, list.size() - startIdx);
+
+		// Pre-compute count strings + column widths for this page.
 		final String[] counts = new String[rows];
 		final int[] countColors = new int[rows];
 		int nameW = 0;
 		int countW = 0;
 		for (int i = 0; i < rows; ++i) {
-			MaterialListEntry e = list.get(i);
+			MaterialListEntry e = list.get(startIdx + i);
 			nameW = Math.max(nameW, font.width(e.getStack().getHoverName().getString()));
 			String c = e.getCountAvailable() + " / " + e.getCountTotal();
 			counts[i] = c;
@@ -138,29 +164,21 @@ public class MaterialHudRenderer implements IRenderer {
 		}
 
 		String header = null;
-		int headerW = 0;
 		if (showHeader) {
 			long total = materialList.getCountTotal();
 			long missing = materialList.getCountMissing();
 			String name = materialList.getName();
 			header = (name != null && !name.isEmpty() ? name : "Materials") + "  " + (total - missing) + " / " + total;
-			if (list.size() > rows) {
-				header = header + "  (+" + (list.size() - rows) + ")";
+			if (pageCount > 1) {
+				header = header + "  [" + (page + 1) + "/" + pageCount + "]";
 			}
-			headerW = font.width(header);
 		}
+		final int headerW = header != null ? font.width(header) : 0;
 
-		final int pad = 3;
-		final int columnGap = 10;
 		final int contentW = Math.max(iconGap + nameW + columnGap + countW, headerW);
 		final int boxW = contentW + pad * 2;
 		final int contentH = headerHeight + rows * lineHeight;
 		final int boxH = contentH + pad * 2;
-
-		final int offX = Configs.Hud.OFFSET_X.getIntegerValue();
-		final int offY = Configs.Hud.OFFSET_Y.getIntegerValue();
-		final int screenW = (int) (GuiUtils.getScaledWindowWidth() / scale);
-		final int screenH = (int) (GuiUtils.getScaledWindowHeight() / scale);
 
 		int x;
 		int y;
@@ -205,7 +223,7 @@ public class MaterialHudRenderer implements IRenderer {
 		}
 
 		for (int i = 0; i < rows; ++i) {
-			MaterialListEntry e = list.get(i);
+			MaterialListEntry e = list.get(startIdx + i);
 			if (showIcons) {
 				ctx.renderItem(e.getStack(), textX, rowY + (lineHeight - 16) / 2);
 			}

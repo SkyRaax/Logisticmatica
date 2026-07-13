@@ -9,8 +9,10 @@
 	"logisticmatica.gui.button.substitutions": "Substitutionen",
 
 	"logisticmatica.gui.title.substitutions": "Substitutionen - %s",
+	"logisticmatica.gui.title.block_picker": "%s ersetzen durch...",
 	"logisticmatica.gui.label.substitution.arrow": "→ %s",
-	"logisticmatica.gui.label.substitution.hint": "Ersatzblock in die Hand nehmen und ein Material anklicken, um es zu tauschen (leere Hand setzt zurück).",
+	"logisticmatica.gui.label.substitution.hint": "Material anklicken, um einen Ersatz zu wählen; [x] klicken zum Zurücksetzen.",
+	"logisticmatica.gui.button.substitution.reset_all": "Alle zurücksetzen",
 	"logisticmatica.message.substitutions.no_focus": "Erst eine Schematic fokussieren, dann die Substitutionen öffnen.",
 	"logisticmatica.gui.button.toggle_hud": "Logisticmatica HUD: %s",
 	"logisticmatica.hotkeys.category.main": "Logisticmatica Tastenkürzel",
@@ -23,6 +25,8 @@
 	"logisticmatica.config.hotkeys.comment.openContainerOverview": "Öffnet die Übersicht der verfolgten Container: jeder markierte Container und sein Inhalt, per Item durchsuchbar für die Frage \"wo ist Item X\".",
 	"logisticmatica.config.hotkeys.name.openSubstitutions": "Substitutionen öffnen",
 	"logisticmatica.config.hotkeys.comment.openSubstitutions": "Öffnet den Material-Substitutions-Editor für die fokussierte Schematic. Tausche sind ein nicht-destruktiver Layer: Ghost-Vorschau, Verifier und Materialliste folgen ihnen, die .litematic-Datei wird nie verändert.",
+	"logisticmatica.config.hotkeys.name.cycleHudPage": "HUD-Seite wechseln",
+	"logisticmatica.config.hotkeys.comment.cycleHudPage": "Blättert das Material-HUD zur nächsten Seite, wenn die Liste länger ist als auf den Bildschirm passt.",
 
 	"logisticmatica.gui.title.focus": "Logisticmatica - Fokus",
 	"logisticmatica.gui.label.focus.active": "Aktuell fokussiert: %s",

@@ -7,22 +7,17 @@ import javax.annotation.Nullable;
 
 import com.google.common.collect.ImmutableList;
 
-import net.minecraft.client.Minecraft;
-import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.Blocks;
 
 import fi.dy.masa.malilib.gui.widgets.WidgetListBase;
-
-import fi.dy.masa.litematica.schematic.LitematicaSchematic;
 
 import com.skyraax.logisticmatica.client.SubstitutionManager;
 import com.skyraax.logisticmatica.client.Substitutions;
 
 /**
- * The scrollable list of a schematic's original blocks on {@link GuiSubstitutions}. Clicking a block
- * substitutes it with the block currently in the player's main hand, or resets it when the hand is
- * empty. The filter matches both the block's name and its current substitute's name.
+ * The scrollable list of a schematic's original blocks on {@link GuiSubstitutions}. Row clicks (open
+ * the picker / reset) are handled by {@link WidgetSubstitutionEntry} itself, since they depend on
+ * where in the row the click lands. The filter matches both a block's name and its substitute's name.
  */
 public class WidgetListSubstitutions extends WidgetListBase<Block, WidgetSubstitutionEntry> {
 	private final GuiSubstitutions gui;
@@ -69,27 +64,9 @@ public class WidgetListSubstitutions extends WidgetListBase<Block, WidgetSubstit
 	}
 
 	@Override
-	protected boolean onEntryClicked(@Nullable Block entry, int index) {
-		if (entry == null) {
-			return true;
-		}
-
-		Minecraft mc = Minecraft.getInstance();
-		ItemStack held = mc.player != null ? mc.player.getMainHandItem() : ItemStack.EMPTY;
-		Block heldBlock = held.isEmpty() ? Blocks.AIR : Block.byItem(held.getItem());
-
-		// Held block substitutes; an empty hand (or the same block) resets the substitution.
-		Block replacement = (heldBlock != Blocks.AIR && heldBlock != entry) ? heldBlock : null;
-		SubstitutionManager.getInstance().setSubstitute(this.gui.getSchematic(), entry, replacement);
-
-		this.refreshEntries();
-		return true;
-	}
-
-	@Override
 	protected WidgetSubstitutionEntry createListEntryWidget(int x, int y, int listIndex, boolean isOdd,
 			@Nullable Block entry) {
 		return new WidgetSubstitutionEntry(x, y, this.browserEntryWidth, this.browserEntryHeight,
-				isOdd, entry, this.gui.getSchematic(), listIndex);
+				isOdd, entry, this.gui, listIndex);
 	}
 }
