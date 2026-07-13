@@ -62,7 +62,13 @@ public class GuiMaterialListView extends GuiListBase<MaterialListEntry, WidgetMa
 	@Override
 	protected int getBrowserHeight()
 	{
-		return this.getScreenHeight() - 80;
+		return this.getScreenHeight() - 102;
+	}
+
+	@Override
+	protected int getListY()
+	{
+		return 66; // leave room for the navigation tab row
 	}
 
 	@Override
@@ -78,7 +84,9 @@ public class GuiMaterialListView extends GuiListBase<MaterialListEntry, WidgetMa
 		// The screen title (this.title == materialList.getTitle()) is drawn automatically by GuiBase.
 		super.initGui();
 
-		final int y = 24;
+		NavBar.add(this, NavBar.Tab.MATERIALS);
+
+		final int y = 44;
 		final int gap = 2;
 		int x = 12;
 

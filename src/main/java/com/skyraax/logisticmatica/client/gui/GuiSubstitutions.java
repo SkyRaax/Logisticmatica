@@ -56,7 +56,12 @@ public class GuiSubstitutions extends GuiListBase<Block, WidgetSubstitutionEntry
 
 	@Override
 	protected int getBrowserHeight() {
-		return this.getScreenHeight() - 80;
+		return this.getScreenHeight() - 102;
+	}
+
+	@Override
+	protected int getListY() {
+		return 66; // leave room for the navigation tab row
 	}
 
 	@Override
@@ -68,7 +73,9 @@ public class GuiSubstitutions extends GuiListBase<Block, WidgetSubstitutionEntry
 	public void initGui() {
 		super.initGui();
 
-		final int y = 24;
+		NavBar.add(this, NavBar.Tab.SUBSTITUTIONS);
+
+		final int y = 44;
 		int x = 12;
 
 		WidgetListSubstitutions listWidget = this.getListWidget();

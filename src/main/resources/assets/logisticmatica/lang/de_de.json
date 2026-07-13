@@ -19,6 +19,13 @@
 
 	"logisticmatica.gui.hud.page": "Seite %s/%s",
 
+	"logisticmatica.gui.tab.menu": "Menü",
+	"logisticmatica.gui.tab.materials": "Material",
+	"logisticmatica.gui.tab.focus": "Fokus",
+	"logisticmatica.gui.tab.containers": "Container",
+	"logisticmatica.gui.tab.substitutions": "Subst.",
+	"logisticmatica.gui.tab.settings": "Einstell.",
+
 	"logisticmatica.gui.title.menu": "Logisticmatica",
 	"logisticmatica.gui.button.litematica_menu": "Logisticmatica",
 	"logisticmatica.gui.button.menu.material_list": "Materialliste",

@@ -39,7 +39,12 @@ public class GuiContainerOverview extends GuiListBase<Snapshot, WidgetContainerE
 
 	@Override
 	protected int getBrowserHeight() {
-		return this.getScreenHeight() - 80;
+		return this.getScreenHeight() - 102;
+	}
+
+	@Override
+	protected int getListY() {
+		return 66; // leave room for the navigation tab row
 	}
 
 	@Override
@@ -51,7 +56,9 @@ public class GuiContainerOverview extends GuiListBase<Snapshot, WidgetContainerE
 	public void initGui() {
 		super.initGui();
 
-		final int y = 24;
+		NavBar.add(this, NavBar.Tab.CONTAINERS);
+
+		final int y = 44;
 		int x = 12;
 
 		WidgetListContainerOverview listWidget = this.getListWidget();

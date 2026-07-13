@@ -51,9 +51,11 @@ public class GuiFocusPicker extends GuiBase {
 	public void initGui() {
 		super.initGui();
 
+		NavBar.add(this, NavBar.Tab.FOCUS);
+
 		final int x = 12;
 		final int buttonWidth = Math.min(320, this.getScreenWidth() - 24);
-		int y = 32;
+		int y = 46;
 
 		MaterialListBase active = DataManager.getMaterialList();
 		String activeName = active != null
