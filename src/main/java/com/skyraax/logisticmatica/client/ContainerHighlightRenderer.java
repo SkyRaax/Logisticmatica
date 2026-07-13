@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.MeshData;
@@ -79,8 +80,12 @@ public class ContainerHighlightRenderer implements IRenderer {
 		}
 
 		Color4f color = Configs.Colors.CONTAINER_HIGHLIGHT.getColor();
-		RenderContext ctx = new RenderContext(() -> "logisticmatica:container_highlight",
-				MaLiLibPipelines.DEBUG_LINES_MASA_SIMPLE_NO_DEPTH_NO_CULL, 0);
+
+		// See-through (no depth) or occluded (depth-tested) based on config.
+		RenderPipeline pipeline = Configs.Hud.OUTLINE_SEE_THROUGH.getBooleanValue()
+				? MaLiLibPipelines.DEBUG_LINES_MASA_SIMPLE_NO_DEPTH_NO_CULL
+				: MaLiLibPipelines.DEBUG_LINES_MASA_SIMPLE_LEQUAL_DEPTH;
+		RenderContext ctx = new RenderContext(() -> "logisticmatica:container_highlight", pipeline, 0);
 		BufferBuilder buffer = ctx.getBuilder();
 
 		for (BlockPos block : this.visible) {

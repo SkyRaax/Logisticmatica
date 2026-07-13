@@ -17,6 +17,8 @@
 	"logisticmatica.gui.button.toggle_hud": "Logisticmatica HUD: %s",
 	"logisticmatica.hotkeys.category.main": "Logisticmatica Tastenkürzel",
 
+	"logisticmatica.gui.hud.page": "Seite %s/%s",
+
 	"logisticmatica.gui.title.menu": "Logisticmatica",
 	"logisticmatica.gui.button.litematica_menu": "Logisticmatica",
 	"logisticmatica.gui.button.menu.material_list": "Materialliste",
@@ -92,6 +94,18 @@
 	"logisticmatica.config.hud.comment.hudContainerLabels": "Zeigt über nahen markierten Containern eine schwebende Text-Beschriftung mit ihren häufigsten Items.",
 	"logisticmatica.config.hud.name.hudContainerPeek": "Container-Vorschau",
 	"logisticmatica.config.hud.comment.hudContainerPeek": "Zeigt beim Anschauen eines markierten Containers ein Inventar-Panel mit seinem Inhalt (aus dem Cache, funktioniert also auch geschlossen oder aus der Ferne).",
+	"logisticmatica.config.hud.name.hudLabelSeeThrough": "Beschriftung durch Wände",
+	"logisticmatica.config.hud.comment.hudLabelSeeThrough": "Zeichnet die schwebenden Container-Beschriftungen durch Wände. Aus = hinter Blöcken verdeckt.",
+	"logisticmatica.config.hud.name.hudOutlineSeeThrough": "Umrandung durch Wände",
+	"logisticmatica.config.hud.comment.hudOutlineSeeThrough": "Zeichnet die Umrandung markierter Container durch Wände. Aus = hinter Blöcken verdeckt.",
+	"logisticmatica.config.hud.name.hudPeekAlignment": "Vorschau-Position",
+	"logisticmatica.config.hud.comment.hudPeekAlignment": "An welcher Bildschirmecke das Vorschau-Panel verankert wird (weg von anderen Overlays wie Jade schieben).",
+	"logisticmatica.config.hud.name.hudPeekOffsetX": "Vorschau-Versatz X",
+	"logisticmatica.config.hud.comment.hudPeekOffsetX": "Horizontaler Versatz des Vorschau-Panels von seiner Ecke, in Pixeln.",
+	"logisticmatica.config.hud.name.hudPeekOffsetY": "Vorschau-Versatz Y",
+	"logisticmatica.config.hud.comment.hudPeekOffsetY": "Vertikaler Versatz des Vorschau-Panels von seiner Ecke, in Pixeln.",
+	"logisticmatica.config.hud.name.hudPeekScale": "Vorschau-Skalierung",
+	"logisticmatica.config.hud.comment.hudPeekScale": "Größe des Container-Vorschau-Panels.",
 
 	"logisticmatica.config.colors.name.colorText": "Textfarbe",
 	"logisticmatica.config.colors.comment.colorText": "Farbe des normalen HUD-Textes.",

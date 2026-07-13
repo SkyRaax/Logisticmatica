@@ -17,6 +17,8 @@
 	"logisticmatica.gui.button.toggle_hud": "Logisticmatica HUD: %s",
 	"logisticmatica.hotkeys.category.main": "Logisticmatica Hotkeys",
 
+	"logisticmatica.gui.hud.page": "Page %s/%s",
+
 	"logisticmatica.gui.title.menu": "Logisticmatica",
 	"logisticmatica.gui.button.litematica_menu": "Logisticmatica",
 	"logisticmatica.gui.button.menu.material_list": "Material List",
@@ -92,6 +94,18 @@
 	"logisticmatica.config.hud.comment.hudContainerLabels": "Float a text label above nearby marked containers listing their most-plentiful items.",
 	"logisticmatica.config.hud.name.hudContainerPeek": "Container Peek",
 	"logisticmatica.config.hud.comment.hudContainerPeek": "When looking at a marked container, show an inventory panel of its contents (from the cache, so it works even closed or far away).",
+	"logisticmatica.config.hud.name.hudLabelSeeThrough": "Label Through Walls",
+	"logisticmatica.config.hud.comment.hudLabelSeeThrough": "Draw the floating container labels through walls. Off means they are hidden behind blocks.",
+	"logisticmatica.config.hud.name.hudOutlineSeeThrough": "Outline Through Walls",
+	"logisticmatica.config.hud.comment.hudOutlineSeeThrough": "Draw the marked-container outline through walls. Off means it is hidden behind blocks.",
+	"logisticmatica.config.hud.name.hudPeekAlignment": "Peek Position",
+	"logisticmatica.config.hud.comment.hudPeekAlignment": "Which screen corner the container-peek panel is anchored to (move it clear of other overlays like Jade).",
+	"logisticmatica.config.hud.name.hudPeekOffsetX": "Peek Offset X",
+	"logisticmatica.config.hud.comment.hudPeekOffsetX": "Horizontal offset in pixels of the peek panel from its corner.",
+	"logisticmatica.config.hud.name.hudPeekOffsetY": "Peek Offset Y",
+	"logisticmatica.config.hud.comment.hudPeekOffsetY": "Vertical offset in pixels of the peek panel from its corner.",
+	"logisticmatica.config.hud.name.hudPeekScale": "Peek Scale",
+	"logisticmatica.config.hud.comment.hudPeekScale": "Size of the container-peek panel.",
 
 	"logisticmatica.config.colors.name.colorText": "Text Color",
 	"logisticmatica.config.colors.comment.colorText": "Color of the normal HUD text.",

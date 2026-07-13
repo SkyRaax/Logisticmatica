@@ -9,6 +9,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 
+import fi.dy.masa.malilib.config.HudAlignment;
 import fi.dy.masa.malilib.interfaces.IRenderer;
 import fi.dy.masa.malilib.render.GuiContext;
 import fi.dy.masa.malilib.render.InventoryOverlay;
@@ -64,17 +65,62 @@ public class ContainerPeekRenderer implements IRenderer {
 		InventoryProperties props = InventoryOverlay.getInventoryPropsTemp(type, items.size());
 
 		Font font = mc.font;
-		int panelX = (GuiUtils.getScaledWindowWidth() - props.width) / 2;
-		int headerY = 6;
-		int panelY = headerY + font.lineHeight + 2;
+		final int headerHeight = font.lineHeight + 2;
+		final int panelW = props.width;
+		final int panelH = headerHeight + props.height;
+
+		// Position + scale are configurable so the panel can be moved clear of other mods' overlays
+		// (e.g. Jade) and sized to taste.
+		final double scale = Math.max(0.1, Configs.Hud.PEEK_SCALE.getDoubleValue());
+		final HudAlignment alignment = (HudAlignment) Configs.Hud.PEEK_ALIGNMENT.getOptionListValue();
+		final int offX = Configs.Hud.PEEK_OFFSET_X.getIntegerValue();
+		final int offY = Configs.Hud.PEEK_OFFSET_Y.getIntegerValue();
+		final int screenW = (int) (GuiUtils.getScaledWindowWidth() / scale);
+		final int screenH = (int) (GuiUtils.getScaledWindowHeight() / scale);
+
+		int x;
+		int y;
+		switch (alignment) {
+			case TOP_RIGHT -> {
+				x = screenW - panelW - offX;
+				y = offY;
+			}
+			case BOTTOM_LEFT -> {
+				x = offX;
+				y = screenH - panelH - offY;
+			}
+			case BOTTOM_RIGHT -> {
+				x = screenW - panelW - offX;
+				y = screenH - panelH - offY;
+			}
+			case CENTER -> {
+				x = (screenW - panelW) / 2;
+				y = (screenH - panelH) / 2;
+			}
+			default -> {
+				x = offX;
+				y = offY;
+			}
+		}
+
+		boolean scaled = scale != 1.0;
+		if (scaled) {
+			ctx.pose().pushMatrix();
+			ctx.pose().scale((float) scale, (float) scale);
+		}
 
 		String header = mc.level.getBlockState(canonical).getBlock().getName().getString()
 				+ "  " + snapshot.totalItems();
-		ctx.drawString(font, header, panelX, headerY, Configs.Colors.HEADER.getIntegerValue(), true);
+		ctx.drawString(font, header, x, y, Configs.Colors.HEADER.getIntegerValue(), true);
 
-		InventoryOverlay.renderInventoryBackground(ctx, type, panelX, panelY, props.slotsPerRow, props.totalSlots);
-		InventoryOverlay.renderItemStacks(ctx, items, panelX + props.slotOffsetX, panelY + props.slotOffsetY,
+		int panelY = y + headerHeight;
+		InventoryOverlay.renderInventoryBackground(ctx, type, x, panelY, props.slotsPerRow, props.totalSlots);
+		InventoryOverlay.renderItemStacks(ctx, items, x + props.slotOffsetX, panelY + props.slotOffsetY,
 				props.slotsPerRow, 0, props.totalSlots);
+
+		if (scaled) {
+			ctx.pose().popMatrix();
+		}
 	}
 
 	/** Re-expands the aggregated cache counts into real stacks (respecting max stack size), capped to the grid. */

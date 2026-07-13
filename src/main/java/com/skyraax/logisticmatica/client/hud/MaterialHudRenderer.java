@@ -11,6 +11,7 @@ import fi.dy.masa.malilib.config.HudAlignment;
 import fi.dy.masa.malilib.interfaces.IRenderer;
 import fi.dy.masa.malilib.render.GuiContext;
 import fi.dy.masa.malilib.util.GuiUtils;
+import fi.dy.masa.malilib.util.StringUtils;
 
 import fi.dy.masa.litematica.data.DataManager;
 import fi.dy.masa.litematica.materials.MaterialListBase;
@@ -175,9 +176,16 @@ public class MaterialHudRenderer implements IRenderer {
 		}
 		final int headerW = header != null ? font.width(header) : 0;
 
-		final int contentW = Math.max(iconGap + nameW + columnGap + countW, headerW);
+		// A footer line makes the pagination visible: which page you are on and how many there are.
+		final String footer = pageCount > 1
+				? StringUtils.translate("logisticmatica.gui.hud.page", page + 1, pageCount)
+				: null;
+		final int footerHeight = footer != null ? font.lineHeight + 2 : 0;
+		final int footerW = footer != null ? font.width(footer) : 0;
+
+		final int contentW = Math.max(Math.max(iconGap + nameW + columnGap + countW, headerW), footerW);
 		final int boxW = contentW + pad * 2;
-		final int contentH = headerHeight + rows * lineHeight;
+		final int contentH = headerHeight + rows * lineHeight + footerHeight;
 		final int boxH = contentH + pad * 2;
 
 		int x;
@@ -232,6 +240,10 @@ public class MaterialHudRenderer implements IRenderer {
 			String c = counts[i];
 			ctx.drawString(font, c, x + boxW - pad - font.width(c), textY, countColors[i], shadow);
 			rowY += lineHeight;
+		}
+
+		if (footer != null) {
+			ctx.drawString(font, footer, textX, rowY, colHeader, shadow);
 		}
 
 		if (scale != 1.0) {

@@ -13,6 +13,7 @@ import net.minecraft.world.phys.Vec3;
 import fi.dy.masa.malilib.interfaces.IRenderer;
 import fi.dy.masa.malilib.render.RenderUtils;
 import fi.dy.masa.malilib.util.position.Vec3d;
+import fi.dy.masa.malilib.util.text.TextAlignment;
 
 import com.skyraax.logisticmatica.client.config.Configs;
 import com.skyraax.logisticmatica.client.gui.ContainerData;
@@ -62,8 +63,10 @@ public class ContainerLabelRenderer implements IRenderer {
 			this.rebuild(mc.player.position());
 		}
 
+		boolean seeThrough = Configs.Hud.LABEL_SEE_THROUGH.getBooleanValue();
+
 		for (Plate plate : this.plates) {
-			RenderUtils.scheduleTextPlate(plate.lines(), plate.pos(), SCALE);
+			RenderUtils.scheduleTextPlate(plate.lines(), plate.pos(), SCALE, seeThrough, TextAlignment.CENTER);
 		}
 	}
 

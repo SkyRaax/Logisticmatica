@@ -18,6 +18,7 @@ import fi.dy.masa.malilib.config.options.ConfigHotkey;
 import fi.dy.masa.malilib.config.options.ConfigInteger;
 import fi.dy.masa.malilib.config.options.ConfigOptionList;
 import fi.dy.masa.malilib.hotkeys.IHotkey;
+import fi.dy.masa.malilib.hotkeys.KeybindSettings;
 import fi.dy.masa.malilib.util.FileUtils;
 import fi.dy.masa.malilib.util.data.json.JsonUtils;
 
@@ -47,12 +48,19 @@ public class Configs implements IConfigHandler {
 		public static final ConfigBoolean    SHOW_BACKGROUND = new ConfigBoolean("hudBackground", true).apply(HUD_KEY);
 		public static final ConfigBoolean    SHOW_ITEM_ICONS = new ConfigBoolean("hudShowItemIcons", true).apply(HUD_KEY);
 		public static final ConfigBoolean    SHOW_CONTAINER_LABELS = new ConfigBoolean("hudContainerLabels", true).apply(HUD_KEY);
+		public static final ConfigBoolean    LABEL_SEE_THROUGH     = new ConfigBoolean("hudLabelSeeThrough", false).apply(HUD_KEY);
+		public static final ConfigBoolean    OUTLINE_SEE_THROUGH   = new ConfigBoolean("hudOutlineSeeThrough", true).apply(HUD_KEY);
 		public static final ConfigBoolean    SHOW_CONTAINER_PEEK   = new ConfigBoolean("hudContainerPeek", true).apply(HUD_KEY);
+		public static final ConfigOptionList PEEK_ALIGNMENT        = new ConfigOptionList("hudPeekAlignment", HudAlignment.TOP_RIGHT).apply(HUD_KEY);
+		public static final ConfigInteger    PEEK_OFFSET_X         = new ConfigInteger("hudPeekOffsetX", 4, 0, 32000).apply(HUD_KEY);
+		public static final ConfigInteger    PEEK_OFFSET_Y         = new ConfigInteger("hudPeekOffsetY", 4, 0, 32000).apply(HUD_KEY);
+		public static final ConfigDouble     PEEK_SCALE            = new ConfigDouble("hudPeekScale", 1.0, 0.1, 4.0).apply(HUD_KEY);
 
 		public static final ImmutableList<IConfigBase> OPTIONS = ImmutableList.of(
 				ENABLED, RENDER_IN_GUIS, ALIGNMENT, OFFSET_X, OFFSET_Y, SCALE, MAX_LINES,
 				HIDE_COMPLETE, ONLY_MISSING, SHOW_HEADER, SHOW_BACKGROUND, SHOW_ITEM_ICONS,
-				SHOW_CONTAINER_LABELS, SHOW_CONTAINER_PEEK
+				SHOW_CONTAINER_LABELS, LABEL_SEE_THROUGH, OUTLINE_SEE_THROUGH,
+				SHOW_CONTAINER_PEEK, PEEK_ALIGNMENT, PEEK_OFFSET_X, PEEK_OFFSET_Y, PEEK_SCALE
 		);
 	}
 
@@ -74,7 +82,9 @@ public class Configs implements IConfigHandler {
 	private static final String HOTKEYS_KEY = Logisticmatica.MOD_ID + ".config.hotkeys";
 
 	public static class Hotkeys {
-		public static final ConfigHotkey OPEN_MENU             = new ConfigHotkey("openMenu", "").apply(HOTKEYS_KEY);
+		// RELEASE so a single-key bind (e.g. "T") fires on release, leaving the key free to act as a
+		// prefix for chord hotkeys (e.g. "T + O") — pressing/holding it no longer opens the menu at once.
+		public static final ConfigHotkey OPEN_MENU             = new ConfigHotkey("openMenu", "", KeybindSettings.RELEASE).apply(HOTKEYS_KEY);
 		public static final ConfigHotkey OPEN_MATERIAL_LIST     = new ConfigHotkey("openMaterialList", "").apply(HOTKEYS_KEY);
 		public static final ConfigHotkey OPEN_FOCUS_PICKER      = new ConfigHotkey("openFocusPicker", "").apply(HOTKEYS_KEY);
 		public static final ConfigHotkey OPEN_CONTAINER_OVERVIEW = new ConfigHotkey("openContainerOverview", "").apply(HOTKEYS_KEY);
