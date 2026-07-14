@@ -47,8 +47,14 @@ public final class ContainerScan {
 
 			if (menuInventory != mc.player.getInventory()) {
 				if (menuInventory.getContainerSize() == blockInventory.getContainerSize()) {
-					ContainerTracker.getInstance().setContents(canonical,
-							MaterialListUtils.getInventoryItemCounts(menuInventory));
+					ContainerTracker tracker = ContainerTracker.getInstance();
+					tracker.setContents(canonical, MaterialListUtils.getInventoryItemCounts(menuInventory));
+
+					// Persist a marked container's freshly-read contents so they survive a rejoin (matters
+					// on servers, where a closed container cannot be read again).
+					if (tracker.isMarked(canonical)) {
+						tracker.save();
+					}
 				}
 
 				return;

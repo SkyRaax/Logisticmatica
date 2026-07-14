@@ -31,8 +31,8 @@ public final class ContainerData {
 	public record ItemCount(ItemStack stack, int count) {
 	}
 
-	/** A marked container's contents: its position, its items (most-plentiful first) and the grand total. */
-	public record Snapshot(BlockPos pos, List<ItemCount> items, int totalItems) {
+	/** A marked container's contents: its position, the schematic it belongs to, its items and the total. */
+	public record Snapshot(BlockPos pos, @Nullable String schematicKey, List<ItemCount> items, int totalItems) {
 	}
 
 	/** All marked containers whose contents we know, nearest to the player first. */
@@ -43,11 +43,11 @@ public final class ContainerData {
 
 		List<Snapshot> out = new ArrayList<>();
 
-		for (BlockPos pos : tracker.getMarked()) {
+		for (BlockPos pos : tracker.allMarked()) {
 			Object2IntOpenHashMap<ItemType> contents = tracker.getContents(pos);
 
 			if (contents != null && !contents.isEmpty()) {
-				out.add(toSnapshot(pos, contents));
+				out.add(toSnapshot(pos, tracker.schematicKeyOf(pos), contents));
 			}
 		}
 
@@ -58,11 +58,13 @@ public final class ContainerData {
 	/** The snapshot of a single container, or null if we have never looked inside it. */
 	@Nullable
 	public static Snapshot snapshotOf(BlockPos pos) {
-		Object2IntOpenHashMap<ItemType> contents = ContainerTracker.getInstance().getContents(pos);
-		return contents == null ? null : toSnapshot(pos, contents);
+		ContainerTracker tracker = ContainerTracker.getInstance();
+		Object2IntOpenHashMap<ItemType> contents = tracker.getContents(pos);
+		return contents == null ? null : toSnapshot(pos, tracker.schematicKeyOf(pos), contents);
 	}
 
-	private static Snapshot toSnapshot(BlockPos pos, Object2IntOpenHashMap<ItemType> contents) {
+	private static Snapshot toSnapshot(BlockPos pos, @Nullable String schematicKey,
+			Object2IntOpenHashMap<ItemType> contents) {
 		List<ItemCount> items = new ArrayList<>(contents.size());
 		int total = 0;
 
@@ -72,7 +74,7 @@ public final class ContainerData {
 		}
 
 		items.sort(Comparator.comparingInt(ItemCount::count).reversed());
-		return new Snapshot(pos.immutable(), items, total);
+		return new Snapshot(pos.immutable(), schematicKey, items, total);
 	}
 
 	private static double distanceSq(BlockPos pos, Vec3 eye) {

@@ -1,7 +1,10 @@
 package com.skyraax.logisticmatica.client;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
@@ -49,8 +52,12 @@ public class ContainerHighlightRenderer implements IRenderer {
 	private static final double MAX_DISTANCE = 128.0;
 	private static final double MAX_DISTANCE_SQ = MAX_DISTANCE * MAX_DISTANCE;
 
+	/** A marked block to draw, plus the colour of the schematic it belongs to. */
+	private record ColoredBlock(BlockPos pos, Color4f color) {
+	}
+
 	/** Reused every frame so a full render pass allocates nothing. Render thread only. */
-	private final List<BlockPos> visible = new ArrayList<>();
+	private final List<ColoredBlock> visible = new ArrayList<>();
 
 	@Override
 	public void onRenderWorldLast(RenderTarget fb, Matrix4fc modelViewMatrix, CameraRenderState cameraState,
@@ -68,36 +75,48 @@ public class ContainerHighlightRenderer implements IRenderer {
 		}
 
 		Vec3 eye = mc.player.position();
+		Set<String> loadedKeys = SchematicKey.loadedByKey().keySet();
 		this.visible.clear();
 
-		for (BlockPos canonical : tracker.getMarked()) {
-			if (isTooFarAway(canonical, eye)) {
+		// Only show containers whose schematic is currently loaded, coloured per schematic.
+		for (Map.Entry<String, LinkedHashSet<BlockPos>> schematic : tracker.markedBySchematic().entrySet()) {
+			if (!loadedKeys.contains(schematic.getKey())) {
 				continue;
 			}
 
-			this.visible.addAll(ContainerBlocks.blocks(mc.level, canonical));
+			Color4f color = SchematicColors.forKey(schematic.getKey());
+
+			for (BlockPos canonical : schematic.getValue()) {
+				if (isTooFarAway(canonical, eye)) {
+					continue;
+				}
+
+				for (BlockPos block : ContainerBlocks.blocks(mc.level, canonical)) {
+					this.visible.add(new ColoredBlock(block, color));
+				}
+			}
 		}
 
 		if (this.visible.isEmpty()) {
 			return;
 		}
 
-		Color4f color = Configs.Colors.CONTAINER_HIGHLIGHT.getColor();
 		boolean seeThrough = Configs.Hud.OUTLINE_SEE_THROUGH.getBooleanValue();
 
 		// Translucent filled sides first (a solid, chest-tracker-style highlight), then the crisp
 		// edges drawn on top. Both honour the see-through toggle (no-depth vs depth-tested pipeline).
 		if (Configs.Hud.OUTLINE_FILL.getBooleanValue()) {
 			Vec3 camPos = RenderUtils.camPos();
-			Color4f fill = new Color4f(color.r, color.g, color.b, color.a * FILL_ALPHA);
 			RenderPipeline fillPipeline = seeThrough
 					? MaLiLibPipelines.POSITION_COLOR_TRANSLUCENT_NO_DEPTH_NO_CULL
 					: MaLiLibPipelines.POSITION_COLOR_TRANSLUCENT_LEQUAL_DEPTH;
 			RenderContext fillCtx = new RenderContext(() -> "logisticmatica:container_fill", fillPipeline, 0);
 			BufferBuilder fillBuffer = fillCtx.getBuilder();
 
-			for (BlockPos block : this.visible) {
-				RenderUtils.drawBlockBoundingBoxSidesBatchedQuads(block, camPos, fill, EXPAND, fillBuffer);
+			for (ColoredBlock block : this.visible) {
+				Color4f fill = new Color4f(block.color().r, block.color().g, block.color().b,
+						block.color().a * FILL_ALPHA);
+				RenderUtils.drawBlockBoundingBoxSidesBatchedQuads(block.pos(), camPos, fill, EXPAND, fillBuffer);
 			}
 
 			this.flush(fillCtx, fillBuffer);
@@ -109,8 +128,8 @@ public class ContainerHighlightRenderer implements IRenderer {
 		RenderContext ctx = new RenderContext(() -> "logisticmatica:container_highlight", linePipeline, 0);
 		BufferBuilder buffer = ctx.getBuilder();
 
-		for (BlockPos block : this.visible) {
-			RenderUtils.drawBlockBoundingBoxOutlinesBatchedLinesSimple(block, color, EXPAND, LINE_WIDTH, buffer);
+		for (ColoredBlock block : this.visible) {
+			RenderUtils.drawBlockBoundingBoxOutlinesBatchedLinesSimple(block.pos(), block.color(), EXPAND, LINE_WIDTH, buffer);
 		}
 
 		this.flush(ctx, buffer);

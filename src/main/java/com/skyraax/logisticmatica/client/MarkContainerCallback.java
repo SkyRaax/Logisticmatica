@@ -13,6 +13,8 @@ import fi.dy.masa.malilib.hotkeys.KeyAction;
 import fi.dy.masa.malilib.util.InfoUtils;
 import fi.dy.masa.malilib.util.InventoryUtils;
 
+import fi.dy.masa.litematica.schematic.LitematicaSchematic;
+
 /**
  * Hotkey callback: mark/unmark the container the player is looking at. Uses the vanilla crosshair
  * ({@link Minecraft#hitResult}) to find the real-world block, checks it is a container via
@@ -40,9 +42,16 @@ public class MarkContainerCallback implements IHotkeyCallback {
 			return true;
 		}
 
+		// Containers are bound to a schematic, so one must be focused to mark for.
+		LitematicaSchematic focused = FocusState.getSchematic();
+		if (focused == null) {
+			InfoUtils.showGuiOrInGameMessage(MessageType.WARNING, "logisticmatica.message.mark.no_focus");
+			return true;
+		}
+
 		// Treat a double chest as one unit: toggle its canonical (representative) block.
 		BlockPos canonical = ContainerBlocks.canonical(mc.level, pos);
-		boolean nowMarked = ContainerTracker.getInstance().toggle(canonical);
+		boolean nowMarked = ContainerTracker.getInstance().toggle(SchematicKey.of(focused), canonical);
 		ContainerTracker.getInstance().save();
 
 		InfoUtils.showGuiOrInGameMessage(MessageType.SUCCESS,

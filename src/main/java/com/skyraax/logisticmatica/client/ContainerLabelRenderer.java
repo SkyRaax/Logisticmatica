@@ -1,6 +1,7 @@
 package com.skyraax.logisticmatica.client;
 
 import java.util.List;
+import java.util.Map;
 import javax.annotation.Nullable;
 
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
@@ -26,6 +27,8 @@ import org.joml.Vector4f;
 import fi.dy.masa.malilib.interfaces.IRenderer;
 import fi.dy.masa.malilib.render.GuiContext;
 import fi.dy.masa.malilib.util.GuiUtils;
+
+import fi.dy.masa.litematica.schematic.LitematicaSchematic;
 
 import com.skyraax.logisticmatica.client.config.Configs;
 import com.skyraax.logisticmatica.client.gui.ContainerData;
@@ -94,8 +97,15 @@ public class ContainerLabelRenderer implements IRenderer {
 		int scaledH = GuiUtils.getScaledWindowHeight();
 		Vec3 eye = mc.player.position();
 
+		Map<String, LitematicaSchematic> loaded = SchematicKey.loadedByKey();
 		int shown = 0;
 		for (Snapshot snapshot : ContainerData.collectMarked()) {
+			// Only show containers whose schematic is currently loaded.
+			LitematicaSchematic schematic = snapshot.schematicKey() != null ? loaded.get(snapshot.schematicKey()) : null;
+			if (schematic == null) {
+				continue;
+			}
+
 			BlockPos pos = snapshot.pos();
 			double distSq = distanceSq(pos, eye);
 			if (distSq > LABEL_DISTANCE_SQ) {
@@ -111,7 +121,8 @@ public class ContainerLabelRenderer implements IRenderer {
 				continue;
 			}
 
-			drawPanel(ctx, font, screen[0], screen[1], snapshot, Math.sqrt(distSq));
+			drawPanel(ctx, font, screen[0], screen[1], snapshot, Math.sqrt(distSq),
+					schematic.getMetadata().getName(), SchematicColors.argb(snapshot.schematicKey()));
 
 			if (++shown >= MAX_LABELS) {
 				break;
@@ -147,7 +158,8 @@ public class ContainerLabelRenderer implements IRenderer {
 				&& !ContainerBlocks.blocks(mc.level, pos).contains(hit.getBlockPos());
 	}
 
-	private static void drawPanel(GuiContext ctx, Font font, float sx, float sy, Snapshot snapshot, double distance) {
+	private static void drawPanel(GuiContext ctx, Font font, float sx, float sy, Snapshot snapshot,
+			double distance, String header, int headerColor) {
 		List<ItemCount> items = snapshot.items();
 		int shown = Math.min(MAX_ITEMS, items.size());
 		int columns = (shown + ROWS_PER_COLUMN - 1) / ROWS_PER_COLUMN;
@@ -158,9 +170,10 @@ public class ContainerLabelRenderer implements IRenderer {
 			maxNameW = Math.max(maxNameW, font.width(lineText(items.get(i))));
 		}
 
+		int headerHeight = font.lineHeight + 3;
 		int colWidth = ICON_GAP + maxNameW + COL_GAP;
-		int totalW = columns * colWidth - COL_GAP + PAD * 2;
-		int totalH = rowsTall * ROW_HEIGHT + PAD * 2;
+		int totalW = Math.max(columns * colWidth - COL_GAP, font.width(header)) + PAD * 2;
+		int totalH = headerHeight + rowsTall * ROW_HEIGHT + PAD * 2;
 
 		// Fixed, readable size up close; shrinks proportionally with distance so far ones stay small.
 		float scale = Mth.clamp((float) (FULL_SIZE_DISTANCE / distance), MIN_SCALE, 1.0f);
@@ -175,11 +188,14 @@ public class ContainerLabelRenderer implements IRenderer {
 
 		ctx.fill(0, 0, totalW, totalH, Configs.Colors.BACKGROUND.getIntegerValue());
 
+		// Header: the schematic name in the schematic's own colour, so it is obvious what the container is for.
+		ctx.drawString(font, header, PAD, PAD, headerColor, true);
+
 		for (int i = 0; i < shown; i++) {
 			int col = i / ROWS_PER_COLUMN;
 			int row = i % ROWS_PER_COLUMN;
 			int x = PAD + col * colWidth;
-			int y = PAD + row * ROW_HEIGHT;
+			int y = PAD + headerHeight + row * ROW_HEIGHT;
 
 			ItemStack stack = items.get(i).stack();
 			ctx.renderItem(stack, x, y);

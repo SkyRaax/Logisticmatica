@@ -17,6 +17,7 @@ import fi.dy.masa.litematica.materials.MaterialListUtils;
  */
 public class ContainerContentTickHandler implements IClientTickHandler {
 	private int counter;
+	private int saveCounter;
 
 	@Override
 	public void onClientTick(Minecraft mc) {
@@ -35,12 +36,18 @@ public class ContainerContentTickHandler implements IClientTickHandler {
 		}
 		this.counter = 0;
 
-		for (BlockPos pos : tracker.getMarked()) {
+		for (BlockPos pos : tracker.allMarked()) {
 			Container inventory = InventoryUtils.getInventory(mc.level, pos);
 
 			if (inventory != null) {
 				tracker.setContents(pos, MaterialListUtils.getInventoryItemCounts(inventory));
 			}
+		}
+
+		// Persist the refreshed contents roughly every 10 seconds so they survive a rejoin.
+		if (++this.saveCounter >= 10) {
+			this.saveCounter = 0;
+			tracker.save();
 		}
 	}
 }

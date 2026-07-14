@@ -68,6 +68,7 @@
 	"logisticmatica.config.colors.name.colorContainerHighlight": "Container-Highlight",
 	"logisticmatica.config.colors.comment.colorContainerHighlight": "Farbe der Umrandung um markierte Container in der Welt.",
 
+	"logisticmatica.message.mark.no_focus": "Erst eine Schematic fokussieren - markierte Container werden an sie gebunden.",
 	"logisticmatica.message.mark.no_target": "Du visierst keinen Block an.",
 	"logisticmatica.message.mark.not_a_container": "Dieser Block ist kein Container.",
 	"logisticmatica.message.mark.marked": "Container markiert - sein Inhalt zählt jetzt zur Liste.",

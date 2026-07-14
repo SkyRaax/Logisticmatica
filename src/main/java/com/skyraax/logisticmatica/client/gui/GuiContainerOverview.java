@@ -28,7 +28,7 @@ public class GuiContainerOverview extends GuiListBase<Snapshot, WidgetContainerE
 	}
 
 	private void updateTitle() {
-		int marked = ContainerTracker.getInstance().getMarked().size();
+		int marked = ContainerTracker.getInstance().allMarked().size();
 		this.title = StringUtils.translate("logisticmatica.gui.title.container_overview", marked);
 	}
 

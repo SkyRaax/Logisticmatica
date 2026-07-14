@@ -68,6 +68,7 @@
 	"logisticmatica.config.colors.name.colorContainerHighlight": "Container Highlight",
 	"logisticmatica.config.colors.comment.colorContainerHighlight": "Colour of the outline drawn around marked containers in the world.",
 
+	"logisticmatica.message.mark.no_focus": "Focus a schematic first - marked containers are bound to one.",
 	"logisticmatica.message.mark.no_target": "Not looking at any block.",
 	"logisticmatica.message.mark.not_a_container": "That block is not a container.",
 	"logisticmatica.message.mark.marked": "Container marked - its contents now count towards the list.",
