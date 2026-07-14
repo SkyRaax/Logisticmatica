@@ -1,19 +1,31 @@
 package com.skyraax.logisticmatica.client;
 
-import java.util.ArrayList;
 import java.util.List;
+import javax.annotation.Nullable;
 
-import net.minecraft.client.Camera;
-import net.minecraft.client.DeltaTracker;
+import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.blaze3d.pipeline.RenderTarget;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.renderer.RenderBuffers;
+import net.minecraft.client.renderer.culling.Frustum;
+import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.core.BlockPos;
+import net.minecraft.util.Mth;
 import net.minecraft.util.profiling.ProfilerFiller;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
+import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import org.joml.Vector4f;
+
 import fi.dy.masa.malilib.interfaces.IRenderer;
-import fi.dy.masa.malilib.render.RenderUtils;
-import fi.dy.masa.malilib.util.position.Vec3d;
-import fi.dy.masa.malilib.util.text.TextAlignment;
+import fi.dy.masa.malilib.render.GuiContext;
+import fi.dy.masa.malilib.util.GuiUtils;
 
 import com.skyraax.logisticmatica.client.config.Configs;
 import com.skyraax.logisticmatica.client.gui.ContainerData;
@@ -21,94 +33,160 @@ import com.skyraax.logisticmatica.client.gui.ContainerData.ItemCount;
 import com.skyraax.logisticmatica.client.gui.ContainerData.Snapshot;
 
 /**
- * Floats a small label above each nearby marked container listing its most-plentiful items — the
- * "chest tracker" glance: know what a chest holds without opening it. Labels are drawn through
- * MaLiLib's on-demand text-plate renderer, which we feed by scheduling a plate every frame.
- *
- * <p>The label text is rebuilt only every {@link #REBUILD_INTERVAL} frames (reading and sorting a
- * container's contents each frame would be wasteful), while the cheap scheduling happens every frame
- * so the plates never flicker. Only containers within {@link #LABEL_DISTANCE} blocks are labelled,
- * capped at {@link #MAX_LABELS}, so a big storage hall cannot fill the screen or the frame budget.
+ * Draws a compact panel of item icons + counts above each nearby marked container. The panel is a
+ * crisp 2D overlay positioned by projecting the container's world position to the screen — much more
+ * readable than in-world text, and it lets us lay out icons next to text and wrap long lists into
+ * columns. The camera matrices are captured during the world render pass and used in the GUI overlay
+ * pass to do the projection.
  */
 public class ContainerLabelRenderer implements IRenderer {
 	private static final double LABEL_DISTANCE = 48.0;
 	private static final double LABEL_DISTANCE_SQ = LABEL_DISTANCE * LABEL_DISTANCE;
-	private static final int MAX_LABELS = 24;
-	private static final int MAX_LINES = 3;
-	private static final int REBUILD_INTERVAL = 20;
+	private static final int MAX_LABELS = 12;
+	private static final int MAX_ITEMS = 30;
+	private static final int ROWS_PER_COLUMN = 10;
 
-	/** The text plate multiplier convention is {@code configScale * 0.01F} (see MaLiLib's examples). */
-	private static final float SCALE = 2.0f * 0.01f;
+	private static final int ROW_HEIGHT = 18;
+	private static final int ICON_GAP = 20;
+	private static final int COL_GAP = 12;
+	private static final int PAD = 3;
+	private static final double ANCHOR_HEIGHT = 1.15;
 
-	private record Plate(Vec3d pos, List<String> lines) {
+	private final Matrix4f viewMatrix = new Matrix4f();
+	private final Matrix4f projMatrix = new Matrix4f();
+	private final Vector4f scratch = new Vector4f();
+	@Nullable private Vec3 cameraPos;
+
+	// --- World pass: capture the camera transform for this frame. ---
+	@Override
+	public void onRenderWorldLast(RenderTarget fb, Matrix4fc modelViewMatrix, CameraRenderState cameraState,
+			Frustum culling, RenderBuffers buffers, GpuBufferSlice terrainFog, org.joml.Vector4f fogColor,
+			ProfilerFiller profiler) {
+		// The camera render state carries the very matrices used to draw the world this frame.
+		this.viewMatrix.set(cameraState.viewRotationMatrix);
+		this.projMatrix.set(cameraState.projectionMatrix);
+		this.cameraPos = cameraState.pos;
 	}
 
-	private final List<Plate> plates = new ArrayList<>();
-	private int frame;
-
+	// --- GUI pass: project each marked container to the screen and draw its panel. ---
 	@Override
-	public void onExtractWorldLast(DeltaTracker deltaTracker, Camera camera, float ticks, ProfilerFiller profiler) {
-		// The text label is the fallback; when icons are enabled the LevelRenderer mixin draws those instead.
-		if (!Configs.Hud.SHOW_CONTAINER_LABELS.getBooleanValue()
-				|| Configs.Hud.LABEL_ICONS.getBooleanValue()
-				|| ContainerTracker.getInstance().isEmpty()) {
-			this.plates.clear();
+	public void onExtractGuiOverlayPost(GuiContext ctx, float partialTicks, ProfilerFiller profiler) {
+		if (!Configs.Hud.SHOW_CONTAINER_LABELS.getBooleanValue() || this.cameraPos == null) {
+			return;
+		}
+
+		if (ContainerTracker.getInstance().isEmpty() || GuiUtils.getCurrentScreen() != null) {
 			return;
 		}
 
 		Minecraft mc = Minecraft.getInstance();
-		if (mc.player == null) {
-			this.plates.clear();
+		if (mc.level == null || mc.player == null) {
 			return;
 		}
 
-		if (this.frame++ % REBUILD_INTERVAL == 0) {
-			this.rebuild(mc.player.position());
-		}
-
+		Font font = mc.font;
 		boolean seeThrough = Configs.Hud.LABEL_SEE_THROUGH.getBooleanValue();
+		int scaledW = GuiUtils.getScaledWindowWidth();
+		int scaledH = GuiUtils.getScaledWindowHeight();
+		Vec3 eye = mc.player.position();
 
-		for (Plate plate : this.plates) {
-			RenderUtils.scheduleTextPlate(plate.lines(), plate.pos(), SCALE, seeThrough, TextAlignment.CENTER);
-		}
-	}
-
-	private void rebuild(Vec3 eye) {
-		this.plates.clear();
-
-		// collectMarked() is already sorted nearest-first, so honouring MAX_LABELS keeps the closest.
+		int shown = 0;
 		for (Snapshot snapshot : ContainerData.collectMarked()) {
 			BlockPos pos = snapshot.pos();
-
-			if (distanceSq(pos, eye) > LABEL_DISTANCE_SQ) {
+			double distSq = distanceSq(pos, eye);
+			if (distSq > LABEL_DISTANCE_SQ) {
 				continue;
 			}
 
-			this.plates.add(new Plate(new Vec3d(pos.getX() + 0.5, pos.getY() + 1.3, pos.getZ() + 0.5),
-					buildLines(snapshot)));
+			float[] screen = this.project(pos.getX() + 0.5, pos.getY() + ANCHOR_HEIGHT, pos.getZ() + 0.5, scaledW, scaledH);
+			if (screen == null) {
+				continue;
+			}
 
-			if (this.plates.size() >= MAX_LABELS) {
+			if (!seeThrough && this.isOccluded(mc, pos)) {
+				continue;
+			}
+
+			drawPanel(ctx, font, screen[0], screen[1], snapshot, Math.sqrt(distSq));
+
+			if (++shown >= MAX_LABELS) {
 				break;
 			}
 		}
 	}
 
-	private static List<String> buildLines(Snapshot snapshot) {
+	/** Projects a world position to GUI-scaled screen coords {@code [x, y]}, or null if behind the camera. */
+	@Nullable
+	private float[] project(double wx, double wy, double wz, int scaledW, int scaledH) {
+		this.scratch.set((float) (wx - this.cameraPos.x), (float) (wy - this.cameraPos.y),
+				(float) (wz - this.cameraPos.z), 1.0f);
+		this.viewMatrix.transform(this.scratch);
+		this.projMatrix.transform(this.scratch);
+
+		if (this.scratch.w <= 0.0001f) {
+			return null; // behind the camera
+		}
+
+		float ndcX = this.scratch.x / this.scratch.w;
+		float ndcY = this.scratch.y / this.scratch.w;
+		return new float[] {
+				(ndcX * 0.5f + 0.5f) * scaledW,
+				(1.0f - (ndcY * 0.5f + 0.5f)) * scaledH
+		};
+	}
+
+	private boolean isOccluded(Minecraft mc, BlockPos pos) {
+		BlockHitResult hit = mc.level.clip(new ClipContext(this.cameraPos, Vec3.atCenterOf(pos),
+				ClipContext.Block.VISUAL, ClipContext.Fluid.NONE, mc.player));
+
+		return hit.getType() == HitResult.Type.BLOCK
+				&& !ContainerBlocks.blocks(mc.level, pos).contains(hit.getBlockPos());
+	}
+
+	private static void drawPanel(GuiContext ctx, Font font, float sx, float sy, Snapshot snapshot, double distance) {
 		List<ItemCount> items = snapshot.items();
-		List<String> lines = new ArrayList<>(MAX_LINES + 1);
+		int shown = Math.min(MAX_ITEMS, items.size());
+		int columns = (shown + ROWS_PER_COLUMN - 1) / ROWS_PER_COLUMN;
+		int rowsTall = Math.min(shown, ROWS_PER_COLUMN);
 
-		int shown = Math.min(MAX_LINES, items.size());
+		int maxNameW = 0;
 		for (int i = 0; i < shown; i++) {
-			ItemCount item = items.get(i);
-			lines.add(item.count() + "× " + item.stack().getHoverName().getString());
+			maxNameW = Math.max(maxNameW, font.width(lineText(items.get(i))));
 		}
 
-		int remaining = items.size() - shown;
-		if (remaining > 0) {
-			lines.add("+" + remaining);
+		int colWidth = ICON_GAP + maxNameW + COL_GAP;
+		int totalW = columns * colWidth - COL_GAP + PAD * 2;
+		int totalH = rowsTall * ROW_HEIGHT + PAD * 2;
+
+		// Nearer containers get a slightly larger panel; far ones shrink so a dense area is not a mess.
+		float scale = Mth.clamp((float) (10.0 / distance), 0.5f, 1.15f);
+		float panelLeft = sx - (totalW * scale) / 2.0f;
+		float panelTop = sy - totalH * scale;
+
+		int textColor = Configs.Colors.TEXT.getIntegerValue();
+
+		ctx.pose().pushMatrix();
+		ctx.pose().translate(panelLeft, panelTop);
+		ctx.pose().scale(scale, scale);
+
+		ctx.fill(0, 0, totalW, totalH, Configs.Colors.BACKGROUND.getIntegerValue());
+
+		for (int i = 0; i < shown; i++) {
+			int col = i / ROWS_PER_COLUMN;
+			int row = i % ROWS_PER_COLUMN;
+			int x = PAD + col * colWidth;
+			int y = PAD + row * ROW_HEIGHT;
+
+			ItemStack stack = items.get(i).stack();
+			ctx.renderItem(stack, x, y);
+			ctx.drawString(font, lineText(items.get(i)), x + ICON_GAP, y + (ROW_HEIGHT - font.lineHeight) / 2, textColor, true);
 		}
 
-		return lines;
+		ctx.pose().popMatrix();
+	}
+
+	private static String lineText(ItemCount item) {
+		return item.count() + "× " + item.stack().getHoverName().getString();
 	}
 
 	private static double distanceSq(BlockPos pos, Vec3 eye) {

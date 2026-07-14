@@ -28,11 +28,15 @@ public class LogisticmaticaInitHandler implements IInitializationHandler {
 				new ModInfo(Logisticmatica.MOD_ID, Logisticmatica.MOD_NAME, GuiConfigs::new));
 
 		// Renderers: the material HUD and the chest-peek panel (in-game GUI overlays), plus the
-		// tracked-container highlight and the floating item labels (world renderers).
+		// tracked-container highlight (world). The container label captures the camera transform in the
+		// world pass and draws its projected panel in the GUI pass, so it registers for both.
 		RenderEventHandler.getInstance().registerInGameGuiRenderer(new MaterialHudRenderer());
 		RenderEventHandler.getInstance().registerInGameGuiRenderer(new ContainerPeekRenderer());
 		RenderEventHandler.getInstance().registerWorldLastRenderer(new ContainerHighlightRenderer());
-		RenderEventHandler.getInstance().registerWorldLastRenderer(new ContainerLabelRenderer());
+
+		ContainerLabelRenderer labelRenderer = new ContainerLabelRenderer();
+		RenderEventHandler.getInstance().registerWorldLastRenderer(labelRenderer);
+		RenderEventHandler.getInstance().registerInGameGuiRenderer(labelRenderer);
 
 		// Hotkeys: register the keybinds and attach callbacks.
 		InputEventHandler.getKeybindManager().registerKeybindProvider(InputHandler.getInstance());

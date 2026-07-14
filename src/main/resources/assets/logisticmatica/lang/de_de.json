@@ -99,8 +99,6 @@
 	"logisticmatica.config.hud.comment.hudShowItemIcons": "Zeichnet das Item-Symbol neben jeder Zeile.",
 	"logisticmatica.config.hud.name.hudContainerLabels": "Container-Beschriftungen",
 	"logisticmatica.config.hud.comment.hudContainerLabels": "Zeigt über nahen markierten Containern eine schwebende Beschriftung mit ihren häufigsten Items.",
-	"logisticmatica.config.hud.name.hudLabelIcons": "Beschriftung als Icons",
-	"logisticmatica.config.hud.comment.hudLabelIcons": "Zeigt die Container-Beschriftung als schwebende Item-Icons (in der Welt gerendert) statt als Textliste. Falls gar keine Beschriftung erscheint, hier ausschalten für die Text-Variante.",
 	"logisticmatica.config.hud.name.hudContainerPeek": "Container-Vorschau",
 	"logisticmatica.config.hud.comment.hudContainerPeek": "Zeigt beim Anschauen eines markierten Containers ein Inventar-Panel mit seinem Inhalt (aus dem Cache, funktioniert also auch geschlossen oder aus der Ferne).",
 	"logisticmatica.config.hud.name.hudLabelSeeThrough": "Beschriftung durch Wände",
