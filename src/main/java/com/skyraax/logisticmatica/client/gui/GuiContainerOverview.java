@@ -21,7 +21,7 @@ import com.skyraax.logisticmatica.client.gui.ContainerData.Snapshot;
  */
 public class GuiContainerOverview extends GuiListBase<Snapshot, WidgetContainerEntry, WidgetListContainerOverview> {
 	public GuiContainerOverview() {
-		super(10, 44);
+		super(10, 66); // leave room for the navigation tab row + control row
 
 		this.useTitleHierarchy = false;
 		this.updateTitle();
@@ -40,11 +40,6 @@ public class GuiContainerOverview extends GuiListBase<Snapshot, WidgetContainerE
 	@Override
 	protected int getBrowserHeight() {
 		return this.getScreenHeight() - 102;
-	}
-
-	@Override
-	protected int getListY() {
-		return 66; // leave room for the navigation tab row
 	}
 
 	@Override

@@ -36,7 +36,7 @@ public class GuiMaterialListView extends GuiListBase<MaterialListEntry, WidgetMa
 
 	public GuiMaterialListView(MaterialListBase materialList)
 	{
-		super(10, 44);
+		super(10, 66); // leave room for the navigation tab row + control row
 
 		this.materialList = materialList;
 		this.materialList.setCompletionListener(this);
@@ -63,12 +63,6 @@ public class GuiMaterialListView extends GuiListBase<MaterialListEntry, WidgetMa
 	protected int getBrowserHeight()
 	{
 		return this.getScreenHeight() - 102;
-	}
-
-	@Override
-	protected int getListY()
-	{
-		return 66; // leave room for the navigation tab row
 	}
 
 	@Override

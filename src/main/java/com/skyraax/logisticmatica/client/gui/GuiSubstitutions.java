@@ -28,7 +28,7 @@ public class GuiSubstitutions extends GuiListBase<Block, WidgetSubstitutionEntry
 	private String filterText = "";
 
 	public GuiSubstitutions(LitematicaSchematic schematic) {
-		super(10, 44);
+		super(10, 66); // leave room for the navigation tab row + control row
 
 		this.schematic = schematic;
 		this.useTitleHierarchy = false;
@@ -57,11 +57,6 @@ public class GuiSubstitutions extends GuiListBase<Block, WidgetSubstitutionEntry
 	@Override
 	protected int getBrowserHeight() {
 		return this.getScreenHeight() - 102;
-	}
-
-	@Override
-	protected int getListY() {
-		return 66; // leave room for the navigation tab row
 	}
 
 	@Override

@@ -52,6 +52,10 @@ public class ContainerLabelRenderer implements IRenderer {
 	private static final int PAD = 3;
 	private static final double ANCHOR_HEIGHT = 1.15;
 
+	/** Within this distance the panel is full (fixed, readable) size; beyond it, it shrinks with distance. */
+	private static final double FULL_SIZE_DISTANCE = 5.0;
+	private static final float MIN_SCALE = 0.25f;
+
 	private final Matrix4f viewMatrix = new Matrix4f();
 	private final Matrix4f projMatrix = new Matrix4f();
 	private final Vector4f scratch = new Vector4f();
@@ -158,8 +162,8 @@ public class ContainerLabelRenderer implements IRenderer {
 		int totalW = columns * colWidth - COL_GAP + PAD * 2;
 		int totalH = rowsTall * ROW_HEIGHT + PAD * 2;
 
-		// Nearer containers get a slightly larger panel; far ones shrink so a dense area is not a mess.
-		float scale = Mth.clamp((float) (10.0 / distance), 0.5f, 1.15f);
+		// Fixed, readable size up close; shrinks proportionally with distance so far ones stay small.
+		float scale = Mth.clamp((float) (FULL_SIZE_DISTANCE / distance), MIN_SCALE, 1.0f);
 		float panelLeft = sx - (totalW * scale) / 2.0f;
 		float panelTop = sy - totalH * scale;
 
