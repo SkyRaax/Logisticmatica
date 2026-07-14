@@ -12,7 +12,6 @@ import net.minecraft.client.renderer.RenderBuffers;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.core.BlockPos;
-import net.minecraft.util.Mth;
 import net.minecraft.util.profiling.ProfilerFiller;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ClipContext;
@@ -55,9 +54,8 @@ public class ContainerLabelRenderer implements IRenderer {
 	private static final int PAD = 3;
 	private static final double ANCHOR_HEIGHT = 1.15;
 
-	/** Within this distance the panel is full (fixed, readable) size; beyond it, it shrinks with distance. */
-	private static final double FULL_SIZE_DISTANCE = 5.0;
-	private static final float MIN_SCALE = 0.25f;
+	/** Scale per screen-pixel of one world block; keeps the panel a fixed world size, like a name tag. */
+	private static final float PANEL_WORLD_SCALE = 0.022f;
 
 	private final Matrix4f viewMatrix = new Matrix4f();
 	private final Matrix4f projMatrix = new Matrix4f();
@@ -107,13 +105,14 @@ public class ContainerLabelRenderer implements IRenderer {
 			}
 
 			BlockPos pos = snapshot.pos();
-			double distSq = distanceSq(pos, eye);
-			if (distSq > LABEL_DISTANCE_SQ) {
+			if (distanceSq(pos, eye) > LABEL_DISTANCE_SQ) {
 				continue;
 			}
 
-			float[] screen = this.project(pos.getX() + 0.5, pos.getY() + ANCHOR_HEIGHT, pos.getZ() + 0.5, scaledW, scaledH);
-			if (screen == null) {
+			double wy = pos.getY() + ANCHOR_HEIGHT;
+			float[] screen = this.project(pos.getX() + 0.5, wy, pos.getZ() + 0.5, scaledW, scaledH);
+			float[] screenUp = this.project(pos.getX() + 0.5, wy + 1.0, pos.getZ() + 0.5, scaledW, scaledH);
+			if (screen == null || screenUp == null) {
 				continue;
 			}
 
@@ -121,7 +120,12 @@ public class ContainerLabelRenderer implements IRenderer {
 				continue;
 			}
 
-			drawPanel(ctx, font, screen[0], screen[1], snapshot, Math.sqrt(distSq),
+			// The screen span of one world block at this depth drives the scale, so the panel behaves
+			// like a name tag: it tracks perspective, FOV and zoom exactly, as if fixed to the container.
+			float unitPixels = Math.abs(screen[1] - screenUp[1]);
+			float scale = Math.max(0.02f, unitPixels * PANEL_WORLD_SCALE);
+
+			drawPanel(ctx, font, screen[0], screen[1], snapshot, scale,
 					schematic.getMetadata().getName(), SchematicColors.argb(snapshot.schematicKey()));
 
 			if (++shown >= MAX_LABELS) {
@@ -159,7 +163,7 @@ public class ContainerLabelRenderer implements IRenderer {
 	}
 
 	private static void drawPanel(GuiContext ctx, Font font, float sx, float sy, Snapshot snapshot,
-			double distance, String header, int headerColor) {
+			float scale, String header, int headerColor) {
 		List<ItemCount> items = snapshot.items();
 		int shown = Math.min(MAX_ITEMS, items.size());
 		int columns = (shown + ROWS_PER_COLUMN - 1) / ROWS_PER_COLUMN;
@@ -175,8 +179,6 @@ public class ContainerLabelRenderer implements IRenderer {
 		int totalW = Math.max(columns * colWidth - COL_GAP, font.width(header)) + PAD * 2;
 		int totalH = headerHeight + rowsTall * ROW_HEIGHT + PAD * 2;
 
-		// Fixed, readable size up close; shrinks proportionally with distance so far ones stay small.
-		float scale = Mth.clamp((float) (FULL_SIZE_DISTANCE / distance), MIN_SCALE, 1.0f);
 		float panelLeft = sx - (totalW * scale) / 2.0f;
 		float panelTop = sy - totalH * scale;
 

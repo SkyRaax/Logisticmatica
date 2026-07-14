@@ -10,6 +10,7 @@ import fi.dy.masa.malilib.event.InputEventHandler;
 import fi.dy.masa.malilib.event.RenderEventHandler;
 import fi.dy.masa.malilib.event.TickHandler;
 import fi.dy.masa.malilib.event.WorldLoadHandler;
+import fi.dy.masa.malilib.hotkeys.IHotkeyCallback;
 import fi.dy.masa.malilib.hotkeys.KeyCallbackToggleBooleanConfigWithMessage;
 import fi.dy.masa.malilib.interfaces.IInitializationHandler;
 import fi.dy.masa.malilib.registry.Registry;
@@ -38,20 +39,22 @@ public class LogisticmaticaInitHandler implements IInitializationHandler {
 		RenderEventHandler.getInstance().registerWorldLastRenderer(labelRenderer);
 		RenderEventHandler.getInstance().registerInGameGuiRenderer(labelRenderer);
 
-		// Hotkeys: register the keybinds and attach callbacks.
+		// Hotkeys: register the keybinds and attach callbacks. Every callback except the menu is wrapped
+		// so it records activity (see HotkeyActivity), letting the menu hotkey suppress itself right
+		// after a chord that shares its key.
 		InputEventHandler.getKeybindManager().registerKeybindProvider(InputHandler.getInstance());
-		Configs.Hotkeys.TOGGLE_HUD.getKeybind().setCallback(
-				new KeyCallbackToggleBooleanConfigWithMessage(Configs.Hud.ENABLED));
 		Configs.Hotkeys.OPEN_MENU.getKeybind().setCallback(new OpenMenuCallback());
-		Configs.Hotkeys.OPEN_MATERIAL_LIST.getKeybind().setCallback(new OpenMaterialListCallback());
-		Configs.Hotkeys.OPEN_FOCUS_PICKER.getKeybind().setCallback(new OpenFocusPickerCallback());
-		Configs.Hotkeys.OPEN_CONTAINER_OVERVIEW.getKeybind().setCallback(new OpenContainerOverviewCallback());
-		Configs.Hotkeys.OPEN_SUBSTITUTIONS.getKeybind().setCallback(new OpenSubstitutionsCallback());
-		Configs.Hotkeys.CYCLE_HUD_PAGE.getKeybind().setCallback((action, key) -> {
+		Configs.Hotkeys.TOGGLE_HUD.getKeybind().setCallback(
+				marking(new KeyCallbackToggleBooleanConfigWithMessage(Configs.Hud.ENABLED)));
+		Configs.Hotkeys.OPEN_MATERIAL_LIST.getKeybind().setCallback(marking(new OpenMaterialListCallback()));
+		Configs.Hotkeys.OPEN_FOCUS_PICKER.getKeybind().setCallback(marking(new OpenFocusPickerCallback()));
+		Configs.Hotkeys.OPEN_CONTAINER_OVERVIEW.getKeybind().setCallback(marking(new OpenContainerOverviewCallback()));
+		Configs.Hotkeys.OPEN_SUBSTITUTIONS.getKeybind().setCallback(marking(new OpenSubstitutionsCallback()));
+		Configs.Hotkeys.CYCLE_HUD_PAGE.getKeybind().setCallback(marking((action, key) -> {
 			MaterialHudRenderer.cycleHudPage();
 			return true;
-		});
-		Configs.Hotkeys.MARK_CONTAINER.getKeybind().setCallback(new MarkContainerCallback());
+		}));
+		Configs.Hotkeys.MARK_CONTAINER.getKeybind().setCallback(marking(new MarkContainerCallback()));
 
 		// Persistence + counting: load tracked containers on world join, and (single-player) keep
 		// their content snapshots fresh each tick so their items count towards the list.
@@ -62,5 +65,13 @@ public class LogisticmaticaInitHandler implements IInitializationHandler {
 		SubstitutionManager.getInstance().load();
 
 		Logisticmatica.LOGGER.info("[{}] Config, HUD, hotkeys and container tracking registered.", Logisticmatica.MOD_NAME);
+	}
+
+	/** Wraps a hotkey callback so it records activity, so the menu hotkey can defer to a chord that shares its key. */
+	private static IHotkeyCallback marking(IHotkeyCallback delegate) {
+		return (action, key) -> {
+			HotkeyActivity.mark();
+			return delegate.onKeyAction(action, key);
+		};
 	}
 }

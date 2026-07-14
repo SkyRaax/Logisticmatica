@@ -14,6 +14,11 @@ import com.skyraax.logisticmatica.client.gui.GuiHub;
 public class OpenMenuCallback implements IHotkeyCallback {
 	@Override
 	public boolean onKeyAction(KeyAction action, IKeybind key) {
+		// If a chord that shares the menu key just fired (e.g. "T + C"), don't also open the menu.
+		if (HotkeyActivity.recentlyActive()) {
+			return true;
+		}
+
 		GuiHub hub = new GuiHub();
 		hub.setParent(GuiUtils.getCurrentScreen());
 		GuiBase.openGui(hub);

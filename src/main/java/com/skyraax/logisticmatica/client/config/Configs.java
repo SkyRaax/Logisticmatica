@@ -83,9 +83,10 @@ public class Configs implements IConfigHandler {
 	private static final String HOTKEYS_KEY = Logisticmatica.MOD_ID + ".config.hotkeys";
 
 	public static class Hotkeys {
-		// RELEASE so a single-key bind (e.g. "T") fires on release, leaving the key free to act as a
-		// prefix for chord hotkeys (e.g. "T + O") — pressing/holding it no longer opens the menu at once.
-		public static final ConfigHotkey OPEN_MENU             = new ConfigHotkey("openMenu", "", KeybindSettings.RELEASE).apply(HOTKEYS_KEY);
+		// RELEASE_EXCLUSIVE so a single-key bind (e.g. "T") fires on release AND is suppressed whenever
+		// a chord that uses it already fired (e.g. "T + C") — exclusive keybinds only trigger when no
+		// other keybind fired that cycle, so holding T as a prefix no longer opens the menu afterwards.
+		public static final ConfigHotkey OPEN_MENU             = new ConfigHotkey("openMenu", "", KeybindSettings.RELEASE_EXCLUSIVE).apply(HOTKEYS_KEY);
 		public static final ConfigHotkey OPEN_MATERIAL_LIST     = new ConfigHotkey("openMaterialList", "").apply(HOTKEYS_KEY);
 		public static final ConfigHotkey OPEN_FOCUS_PICKER      = new ConfigHotkey("openFocusPicker", "").apply(HOTKEYS_KEY);
 		public static final ConfigHotkey OPEN_CONTAINER_OVERVIEW = new ConfigHotkey("openContainerOverview", "").apply(HOTKEYS_KEY);
