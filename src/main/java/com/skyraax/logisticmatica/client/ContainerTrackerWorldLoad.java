@@ -7,6 +7,8 @@ import net.minecraft.client.multiplayer.ClientLevel;
 
 import fi.dy.masa.malilib.interfaces.IWorldLoadListener;
 
+import com.skyraax.logisticmatica.client.share.ClientShareManager;
+
 /**
  * Loads the tracked-container set when a world/dimension is joined and clears the in-memory set on
  * leave. The set is already persisted on every change (see {@link MarkContainerCallback}), so no
@@ -22,6 +24,7 @@ public class ContainerTrackerWorldLoad implements IWorldLoadListener {
 		if (worldAfter != null) {
 			ContainerTracker.getInstance().load();
 			SubstitutionManager.getInstance().reapplyAll();
+			ClientShareManager.getInstance().onWorldChanged();
 		} else {
 			ContainerTracker.getInstance().clear();
 		}

@@ -8,6 +8,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import fi.dy.masa.litematica.data.SchematicHolder;
 import fi.dy.masa.litematica.schematic.LitematicaSchematic;
 
+import com.skyraax.logisticmatica.client.ContainerTracker;
 import com.skyraax.logisticmatica.client.SubstitutionManager;
 
 /**
@@ -21,6 +22,7 @@ import com.skyraax.logisticmatica.client.SubstitutionManager;
 public class MixinSchematicHolder {
 	@Inject(method = "addSchematic", at = @At("TAIL"), remap = false)
 	private void logisticmatica$reapplySubstitutions(LitematicaSchematic schematic, boolean allowDuplicates, CallbackInfo ci) {
+		ContainerTracker.getInstance().reconcileSchematic(schematic);
 		SubstitutionManager.getInstance().reapply(schematic);
 	}
 }

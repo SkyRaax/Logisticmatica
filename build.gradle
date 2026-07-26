@@ -47,6 +47,10 @@ dependencies {
     // Granular permissions backbone (bundled)
     implementation include("me.lucko:fabric-permissions-api:${project.fabric_permissions_api_version}")
 
+    // Pure protocol/model tests; no game launch is required.
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.12.2'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.12.2'
+
     // Optional integration
     compileOnly "com.terraformersmc:modmenu:${project.mod_menu_version}"
 }
@@ -78,6 +82,10 @@ java {
 tasks.withType(JavaCompile).configureEach {
     it.options.encoding = 'UTF-8'
     it.options.release = 25
+}
+
+test {
+    useJUnitPlatform()
 }
 
 jar {

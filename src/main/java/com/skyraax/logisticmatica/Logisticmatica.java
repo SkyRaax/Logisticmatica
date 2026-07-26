@@ -1,5 +1,8 @@
 package com.skyraax.logisticmatica;
 
+import com.skyraax.logisticmatica.server.ShareServer;
+import com.skyraax.logisticmatica.share.ShareNetworking;
+
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.loader.api.FabricLoader;
 import org.slf4j.Logger;
@@ -12,7 +15,7 @@ import org.slf4j.LoggerFactory;
  * stay side-agnostic and must <strong>not</strong> reference Litematica, MaLiLib or any
  * client-only class, so the mod loads cleanly on a Litematica-less dedicated server.
  * Client wiring lives in {@link com.skyraax.logisticmatica.client.LogisticmaticaClient};
- * server-authoritative systems (sharing, permissions, sync) will be registered here.
+ * server-authoritative systems (sharing, permissions, sync) are registered here.
  */
 public class Logisticmatica implements ModInitializer {
 	public static final String MOD_ID = "logisticmatica";
@@ -25,6 +28,8 @@ public class Logisticmatica implements ModInitializer {
 
 	@Override
 	public void onInitialize() {
-		LOGGER.info("[{}] Common init complete. Server-side systems will be registered here.", MOD_NAME);
+		ShareNetworking.registerPayloads();
+		ShareServer.register();
+		LOGGER.info("[{}] Common init complete; sharing protocol v{} registered.", MOD_NAME, com.skyraax.logisticmatica.share.ShareProtocol.VERSION);
 	}
 }

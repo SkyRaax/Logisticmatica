@@ -18,8 +18,8 @@ import com.skyraax.logisticmatica.client.FocusState;
  * The central hub screen for Logisticmatica — one place that reaches every feature (material list,
  * focus, container overview, substitutions, settings) instead of a scatter of hotkeys. Every screen
  * opened from here is given this hub as its parent, so "Back" always returns here and the navigation
- * stays consistent. The "Share" entry is a disabled placeholder for the upcoming multiplayer phase,
- * so the layout already reserves its place.
+ * stays consistent. The Sharing entry opens the server-authoritative project directory when the
+ * server component is available and otherwise explains that local features remain usable.
  */
 public class GuiHub extends GuiBase {
 	private static final int BUTTON_WIDTH = 220;
@@ -43,11 +43,9 @@ public class GuiHub extends GuiBase {
 		y += 24;
 		this.addMenuButton(x, y, "substitutions", true, this::openSubstitutions);
 		y += 24;
+		this.addMenuButton(x, y, "share", true, () -> this.open(new GuiSharing()));
+		y += 24;
 		this.addMenuButton(x, y, "settings", true, () -> this.open(new GuiConfigs()));
-		y += 32;
-
-		// Placeholder for the multiplayer phase: shared schematics, live sync, permissions.
-		this.addMenuButton(x, y, "share", false, () -> { });
 
 		String back = StringUtils.translate("logisticmatica.gui.button.back");
 		ButtonGeneric backButton = new ButtonGeneric(x, this.getScreenHeight() - 26,

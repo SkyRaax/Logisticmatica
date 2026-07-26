@@ -4,6 +4,7 @@ import com.skyraax.logisticmatica.Logisticmatica;
 import com.skyraax.logisticmatica.client.config.Configs;
 import com.skyraax.logisticmatica.client.gui.GuiConfigs;
 import com.skyraax.logisticmatica.client.hud.MaterialHudRenderer;
+import com.skyraax.logisticmatica.client.share.ClientShareManager;
 
 import fi.dy.masa.malilib.config.ConfigManager;
 import fi.dy.masa.malilib.event.InputEventHandler;
@@ -24,6 +25,7 @@ import fi.dy.masa.malilib.util.data.ModInfo;
 public class LogisticmaticaInitHandler implements IInitializationHandler {
 	@Override
 	public void registerModHandlers() {
+		ClientShareManager.register();
 		ConfigManager.getInstance().registerConfigHandler(Logisticmatica.MOD_ID, new Configs());
 		Registry.CONFIG_SCREEN.registerConfigScreenFactory(
 				new ModInfo(Logisticmatica.MOD_ID, Logisticmatica.MOD_NAME, GuiConfigs::new));
