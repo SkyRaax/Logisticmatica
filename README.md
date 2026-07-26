@@ -19,10 +19,11 @@ placement sharing with live sync and granular permissions.
       with wall-penetrating highlights and a content preview in the world.
 - [x] **Material substitution** — persistently swap a material in a placement (e.g. a door
       wood type) for one you actually have, editable straight from the material list.
-- [x] **Placement sharing & live sync** *(server component)* — share a placement, invite
-      teammates, and have your moves/rotations reflected on their client in real time.
+- [x] **Placement sharing & live sync** *(server component)* — choose any loaded placement,
+      invite teammates, replace its schematic without losing the placement, and synchronize moves.
 - [x] **Granular permissions** *(server component)* — decide exactly who may view, move,
-      edit, substitute or re-invite on each of your placements.
+      edit, substitute, manage containers or re-invite on each placement; projects can also be
+      request-only, public-viewable, public-supplier or public-editor.
 - [x] **Persistence** — everything is saved per world/server; set it up once.
 
 ## Requirements
@@ -42,14 +43,22 @@ placement sharing with live sync and granular permissions.
 ## Sharing workflow
 
 1. Install the same Logisticmatica jar on the Fabric server and every participating client.
-2. Select a saved placement in Litematica, open **Logisticmatica > Sharing**, and choose
-   **Share Selected Placement**.
-3. Open the shared project to invite an online player and choose a role. Invitations must be
-   accepted before the schematic can be downloaded.
-4. Member capabilities can be edited individually: view/download, move, replace the schematic,
-   edit substitutions, manage containers, invite, manage permissions, and delete.
-5. Moving, rotating or mirroring a shared placement is broadcast live. Marked containers belonging
+2. Open **Logisticmatica > Sharing > Choose Placement to Share**. The searchable picker contains
+   every loaded Litematica placement and marks the currently selected one.
+3. Every server project is visible in the project directory. Restricted projects reveal metadata
+   only; players can request a Viewer, Builder, Editor or Manager role.
+4. Owners and managers can invite players from a searchable online-player list, approve access
+   requests, select role presets and fine-tune individual capabilities.
+5. **Download / Reload** fetches the authoritative server file. **Replace from Placement** uploads
+   another loaded placement's file while preserving the shared origin, rotation, permissions,
+   substitutions and containers.
+6. Public access can allow everyone to view, supply shared containers or edit while never granting
+   permission administration or deletion.
+7. Moving, rotating or mirroring a shared placement is broadcast live. Marked containers belonging
    to it are read by the server and their item counts are kept in sync for all permitted clients.
+
+If the client joins a server without Logisticmatica, it displays a warning and disables only the
+Sharing screen actions; all local material, container and substitution features continue to work.
 
 The server stores authority data inside the world at `data/logisticmatica/`; clients keep verified,
 server-specific schematic downloads under `config/logisticmatica/shared/`. See

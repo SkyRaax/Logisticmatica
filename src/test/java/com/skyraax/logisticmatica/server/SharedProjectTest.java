@@ -9,6 +9,7 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 
+import com.skyraax.logisticmatica.share.ShareAccess;
 import com.skyraax.logisticmatica.share.SharePermission;
 import com.skyraax.logisticmatica.share.SharedProjectView;
 
@@ -41,6 +42,64 @@ class SharedProjectTest {
 		assertTrue(project.refreshContainer(key, Map.of("minecraft:stone", 2)));
 		assertFalse(project.refreshContainer(key, Map.of("minecraft:stone", 2)));
 		assertEquals(revision, project.revision());
+	}
+
+	@Test
+	void directoryListingHidesProtectedProjectContents() {
+		SharedProject project = project(UUID.randomUUID());
+		project.replaceSubstitutions(Map.of("minecraft:stone", "minecraft:dirt"));
+		project.putContainer(new SharedProject.ContainerKey("minecraft:overworld", 1, 2, 3),
+				Map.of("minecraft:stone", 64));
+
+		SharedProjectView outsider = project.viewFor(UUID.randomUUID(), false);
+		assertFalse(outsider.member());
+		assertFalse(outsider.can(SharePermission.VIEW));
+		assertEquals("", outsider.schematicHash());
+		assertEquals(0, outsider.schematicSize());
+		assertTrue(outsider.substitutions().isEmpty());
+		assertTrue(outsider.containers().isEmpty());
+	}
+
+	@Test
+	void publicViewerReceivesProjectDataWithoutMembership() {
+		SharedProject project = project(UUID.randomUUID());
+		project.setPublicAccess(ShareAccess.PUBLIC_VIEWER);
+
+		SharedProjectView outsider = project.viewFor(UUID.randomUUID(), false);
+		assertFalse(outsider.member());
+		assertTrue(outsider.can(SharePermission.VIEW));
+		assertEquals("a".repeat(64), outsider.schematicHash());
+	}
+
+	@Test
+	void accessRequestIsDistinctFromInvitationAndCanBeApproved() {
+		UUID requester = UUID.randomUUID();
+		SharedProject project = project(UUID.randomUUID());
+		project.requestAccess(requester, "Builder", SharePermission.BUILDER);
+
+		SharedProjectView pending = project.viewFor(requester, false);
+		assertTrue(pending.accessRequested());
+		assertFalse(pending.pendingInvite());
+		assertTrue(project.respondToAccessRequest(requester, true, SharePermission.BUILDER));
+
+		SharedProjectView accepted = project.viewFor(requester, false);
+		assertTrue(accepted.member());
+		assertFalse(accepted.accessRequested());
+		assertTrue(accepted.can(SharePermission.MANAGE_CONTAINERS));
+	}
+
+	@Test
+	void publicPolicyAndAccessRequestSurvivePersistence() {
+		UUID requester = UUID.randomUUID();
+		SharedProject project = project(UUID.randomUUID());
+		project.setPublicAccess(ShareAccess.PUBLIC_SUPPLIER);
+		project.requestAccess(requester, "Supplier", SharePermission.EDITOR);
+
+		SharedProject restored = SharedProject.fromJson(project.toJson());
+		assertTrue(restored != null);
+		assertEquals(ShareAccess.PUBLIC_SUPPLIER, restored.publicAccess());
+		assertTrue(restored.accessRequestedBy(requester));
+		assertEquals(SharePermission.EDITOR, restored.members().get(requester).permissions());
 	}
 
 	private static SharedProject project(UUID owner) {

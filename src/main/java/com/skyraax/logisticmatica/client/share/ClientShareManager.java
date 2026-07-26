@@ -42,16 +42,19 @@ import com.skyraax.logisticmatica.client.Substitutions;
 import com.skyraax.logisticmatica.client.gui.SharingRefreshable;
 import com.skyraax.logisticmatica.share.ClientboundSharePayload;
 import com.skyraax.logisticmatica.share.ServerboundSharePayload;
+import com.skyraax.logisticmatica.share.ShareAccess;
 import com.skyraax.logisticmatica.share.SharePermission;
 import com.skyraax.logisticmatica.share.ShareProtocol;
 import com.skyraax.logisticmatica.share.ShareWire;
 import com.skyraax.logisticmatica.share.SharedContainerView;
+import com.skyraax.logisticmatica.share.SharedPlayerView;
 import com.skyraax.logisticmatica.share.SharedProjectView;
 
 /** Client bridge between the authoritative server model and real Litematica placements. */
 public final class ClientShareManager implements ISchematicPlacementEventListener {
 	private static final ClientShareManager INSTANCE = new ClientShareManager();
 	private final Map<UUID, SharedProjectView> projects = new LinkedHashMap<>();
+	private final Map<UUID, SharedPlayerView> players = new LinkedHashMap<>();
 	private final Map<UUID, SchematicPlacement> placements = new HashMap<>();
 	private final Map<UUID, SchematicPlacement> pendingCreates = new HashMap<>();
 	private final Map<UUID, SchematicPlacement> replacements = new HashMap<>();
@@ -77,6 +80,10 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 	public boolean serverAvailable() { return this.serverAvailable; }
 	public String serverVersion() { return this.serverVersion; }
 	public int serverFeatures() { return this.serverFeatures; }
+	public List<SharedPlayerView> players() {
+		return this.players.values().stream()
+				.sorted(Comparator.comparing(SharedPlayerView::playerName, String.CASE_INSENSITIVE_ORDER)).toList();
+	}
 	public List<SharedProjectView> projects() {
 		return this.projects.values().stream()
 				.sorted(Comparator.comparing(SharedProjectView::name, String.CASE_INSENSITIVE_ORDER)).toList();
@@ -97,6 +104,9 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 		if (ClientPlayNetworking.canSend(ServerboundSharePayload.TYPE)) {
 			byte[] body = ShareWire.encode(w -> w.writeString(Logisticmatica.MOD_VERSION));
 			this.send(ServerboundSharePayload.of(ShareProtocol.ServerboundAction.HELLO, body));
+		} else {
+			InfoUtils.showGuiOrInGameMessage(MessageType.WARNING,
+					"logisticmatica.share.notice.server_missing");
 		}
 	}
 
@@ -106,6 +116,7 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 		this.serverId = null;
 		this.serverFeatures = 0;
 		this.projects.clear();
+		this.players.clear();
 		this.placements.clear();
 		this.pendingCreates.clear();
 		this.replacements.clear();
@@ -127,6 +138,7 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 				case PROJECT_REMOVED -> this.handleProjectRemoved(payload.body());
 				case NOTICE -> this.showMessage(payload.body(), MessageType.SUCCESS);
 				case ERROR -> this.showMessage(payload.body(), MessageType.ERROR);
+				case PLAYERS -> this.handlePlayers(payload.body());
 			}
 		} catch (IOException | RuntimeException e) {
 			Logisticmatica.LOGGER.error("[{}] Invalid sharing response {}: {}",
@@ -154,6 +166,11 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 		this.reconcilePlacements();
 	}
 
+	private void handlePlayers(byte[] body) throws IOException {
+		this.players.clear();
+		for (SharedPlayerView player : ShareWire.decodePlayers(body)) this.players.put(player.playerId(), player);
+	}
+
 	private void handleProjectChanged(UUID requestId, byte[] body) throws IOException {
 		List<SharedProjectView> changed = ShareWire.decodeProjects(body);
 		if (changed.size() != 1) throw new IOException("Expected one changed project");
@@ -169,7 +186,7 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 			Minecraft mc = Minecraft.getInstance();
 			boolean correctDimension = mc.level != null
 					&& mc.level.dimension().identifier().toString().equals(project.dimension());
-			if (!correctDimension) {
+			if (!project.can(SharePermission.VIEW) || !correctDimension) {
 				this.applyingRemote = true;
 				try { DataManager.getSchematicPlacementManager().removeSchematicPlacement(placement); }
 				finally { this.applyingRemote = false; }
@@ -193,7 +210,8 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 		r.requireFinished();
 		if (!hash.equals(sha256(schematicBytes))) throw new IOException("Schematic hash mismatch");
 		SharedProjectView project = this.projects.get(id);
-		if (project == null || !project.schematicHash().equals(hash) || project.revision() < revision) {
+		if (project == null || !project.can(SharePermission.VIEW)
+				|| !project.schematicHash().equals(hash) || project.revision() < revision) {
 			this.refreshProjects();
 			throw new IOException("Stale schematic metadata");
 		}
@@ -233,8 +251,11 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 	private void showMessage(byte[] body, MessageType type) throws IOException {
 		ShareWire.Reader r = ShareWire.decode(body);
 		String key = r.readString();
+		int count = r.readCount(16);
+		Object[] arguments = new Object[count];
+		for (int i = 0; i < count; i++) arguments[i] = r.readString();
 		r.requireFinished();
-		InfoUtils.showGuiOrInGameMessage(type, key);
+		InfoUtils.showGuiOrInGameMessage(type, key, arguments);
 	}
 
 	private void reconcilePlacements() {
@@ -250,21 +271,21 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 			Path schematicFile = placement.getSchematicFile();
 			boolean fromThisServer = schematicFile != null
 					&& schematicFile.toAbsolutePath().normalize().startsWith(serverDirectory);
-			if (fromThisServer && (project == null || project.pendingInvite()
+			if (fromThisServer && (project == null || !project.can(SharePermission.VIEW)
 					|| !project.dimension().equals(dimension))) {
 				this.applyingRemote = true;
 				try { DataManager.getSchematicPlacementManager().removeSchematicPlacement(placement); }
 				finally { this.applyingRemote = false; }
 				continue;
 			}
-			if (project != null && !project.pendingInvite() && project.dimension().equals(dimension)) {
+			if (project != null && project.can(SharePermission.VIEW) && project.dimension().equals(dimension)) {
 				this.placements.put(project.id(), placement);
 				this.applyProject(project, placement);
 			}
 		}
 
 		for (SharedProjectView project : this.projects.values()) {
-			if (!project.pendingInvite() && project.dimension().equals(dimension)
+			if (project.can(SharePermission.VIEW) && project.dimension().equals(dimension)
 					&& !this.placements.containsKey(project.id())) {
 				Path cached = this.sharedDirectory().resolve(project.id() + "-" + project.schematicHash() + ".litematic");
 				if (Files.isRegularFile(cached)) this.loadPlacement(project, cached);
@@ -330,13 +351,21 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 		if (this.requireServer()) this.sendProjectId(ShareProtocol.ServerboundAction.DOWNLOAD_PROJECT, projectId);
 	}
 
+	public List<SchematicPlacement> availablePlacements() {
+		return List.copyOf(DataManager.getSchematicPlacementManager().getAllSchematicsPlacements());
+	}
+
 	public void shareSelectedPlacement() {
-		if (!this.requireServer()) return;
 		SchematicPlacement placement = DataManager.getSchematicPlacementManager().getSelectedSchematicPlacement();
 		if (placement == null) {
 			InfoUtils.showGuiOrInGameMessage(MessageType.WARNING, "logisticmatica.share.error.no_selection");
 			return;
 		}
+		this.sharePlacement(placement);
+	}
+
+	public void sharePlacement(SchematicPlacement placement) {
+		if (!this.requireServer()) return;
 		Path file = placement.getSchematicFile();
 		if (file == null || !Files.isRegularFile(file)) {
 			InfoUtils.showGuiOrInGameMessage(MessageType.ERROR, "logisticmatica.share.error.unsaved_schematic");
@@ -373,14 +402,24 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 	public void uploadCurrentSchematic(UUID projectId) {
 		SharedProjectView project = this.projects.get(projectId);
 		SchematicPlacement placement = this.placements.get(projectId);
-		if (project == null || placement == null || !project.can(SharePermission.UPDATE_SCHEMATIC)) return;
-		Path file = placement.getSchematicFile();
+		if (project == null || placement == null) return;
+		this.replaceSchematic(projectId, placement);
+	}
+
+	public void replaceSchematic(UUID projectId, SchematicPlacement source) {
+		SharedProjectView project = this.projects.get(projectId);
+		if (project == null || !project.can(SharePermission.UPDATE_SCHEMATIC)) return;
+		Path file = source.getSchematicFile();
 		if (file == null || !Files.isRegularFile(file)) {
 			InfoUtils.showGuiOrInGameMessage(MessageType.ERROR, "logisticmatica.share.error.unsaved_schematic");
 			return;
 		}
 		try {
 			byte[] schematic = Files.readAllBytes(file);
+			if (schematic.length > this.serverMaxBytes) {
+				InfoUtils.showGuiOrInGameMessage(MessageType.ERROR, "logisticmatica.share.error.schematic_too_large");
+				return;
+			}
 			byte[] body = ShareWire.encode(w -> {
 				w.writeUuid(projectId);
 				w.writeLong(project.revision());
@@ -392,10 +431,16 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 		}
 	}
 
-	public void invite(UUID projectId, String playerName, int permissions) {
+	public void refreshPlayers() {
+		if (this.requireServer()) this.send(ServerboundSharePayload.of(
+				ShareProtocol.ServerboundAction.LIST_PLAYERS, new byte[0]));
+	}
+
+	public void invite(UUID projectId, SharedPlayerView player, int permissions) {
 		byte[] body = ShareWire.encode(w -> {
 			w.writeUuid(projectId);
-			w.writeString(playerName);
+			w.writeUuid(player.playerId());
+			w.writeString(player.playerName());
 			w.writeInt(permissions);
 		});
 		this.send(ServerboundSharePayload.of(ShareProtocol.ServerboundAction.INVITE, body));
@@ -407,6 +452,38 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 			w.writeBoolean(accepted);
 		});
 		this.send(ServerboundSharePayload.of(ShareProtocol.ServerboundAction.RESPOND_INVITE, body));
+	}
+
+	public void setPublicAccess(UUID projectId, ShareAccess access) {
+		SharedProjectView project = this.projects.get(projectId);
+		if (project == null || !project.can(SharePermission.MANAGE_PERMISSIONS)) return;
+		byte[] body = ShareWire.encode(w -> {
+			w.writeUuid(projectId);
+			w.writeLong(project.revision());
+			w.writeInt(access.ordinal());
+		});
+		this.send(ServerboundSharePayload.of(ShareProtocol.ServerboundAction.SET_PUBLIC_ACCESS, body));
+	}
+
+	public void requestAccess(UUID projectId, int permissions) {
+		byte[] body = ShareWire.encode(w -> {
+			w.writeUuid(projectId);
+			w.writeInt(permissions);
+		});
+		this.send(ServerboundSharePayload.of(ShareProtocol.ServerboundAction.REQUEST_ACCESS, body));
+	}
+
+	public void respondToAccessRequest(UUID projectId, UUID playerId, boolean accepted, int permissions) {
+		SharedProjectView project = this.projects.get(projectId);
+		if (project == null) return;
+		byte[] body = ShareWire.encode(w -> {
+			w.writeUuid(projectId);
+			w.writeLong(project.revision());
+			w.writeUuid(playerId);
+			w.writeBoolean(accepted);
+			w.writeInt(permissions);
+		});
+		this.send(ServerboundSharePayload.of(ShareProtocol.ServerboundAction.RESPOND_ACCESS, body));
 	}
 
 	public void setPermissions(UUID projectId, UUID playerId, int permissions) {

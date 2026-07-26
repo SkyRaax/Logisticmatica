@@ -1,4 +1,4 @@
-# Logisticmatica sharing protocol v1
+# Logisticmatica sharing protocol v2
 
 Logisticmatica uses a server-authoritative Fabric play protocol. The server owns project membership,
 permissions, placement transforms, schematic versions, substitutions and tracked-container state.
@@ -22,9 +22,10 @@ keep both persisted state and full project-list responses within the bounded env
 
 
 On join, the client sends `HELLO`. The server replies with the protocol version, feature mask,
-maximum schematic size, mod version and a persistent server UUID, then sends the projects visible to
-that player. The UUID namespaces the client's download cache so different servers cannot reuse one
-another's project files.
+maximum schematic size, mod version and a persistent server UUID, then sends the complete project
+directory and online-player directory. The UUID namespaces the client's download cache so different
+servers cannot reuse one another's project files. Projects without `VIEW` expose only directory
+metadata; their hash, file size, substitutions, containers and non-owner member roster are omitted.
 
 ## Messages
 
@@ -36,11 +37,13 @@ Client to server actions:
 - `INVITE`, `RESPOND_INVITE`, `SET_PERMISSIONS`, `REMOVE_MEMBER`
 - `DELETE_PROJECT`, `LEAVE_PROJECT`
 - `TOGGLE_CONTAINER`, `REFRESH_CONTAINER`
+- `LIST_PLAYERS`, `SET_PUBLIC_ACCESS`, `REQUEST_ACCESS`, `RESPOND_ACCESS`
 
 Server to client events:
 
 - `HELLO`, `PROJECTS`, `PROJECT_CHANGED`, `PROJECT_REMOVED`, `PROJECT_DATA`
-- translated `NOTICE` and `ERROR` responses
+- `PLAYERS`
+- translated `NOTICE` and `ERROR` responses with bounded formatting arguments
 
 Project updates carry a monotonically increasing revision. Mutations that could overwrite another
 editor's placement or schematic state include the expected revision; stale writes are rejected and
@@ -65,8 +68,31 @@ Permissions are independent bit flags on each project:
 Viewer, Builder, Editor and Manager are convenience presets; the UI also exposes every flag
 individually. The owner has all capabilities. Server operators can administer projects through the
 `logisticmatica.admin` permission node, backed by fabric-permissions-api with operator fallback.
-Pending invitees receive only invitation metadata, not the schematic, substitutions, member list or
-container contents.
+Pending invitees and access requesters receive only project metadata, not the schematic,
+substitutions, non-owner member list or container contents.
+
+| Preset | Capabilities |
+|---|---|
+| Viewer | `VIEW` |
+| Builder | Viewer + `MANAGE_CONTAINERS` |
+| Editor | Builder + `MOVE`, `UPDATE_SCHEMATIC`, `SUBSTITUTE` |
+| Manager | Editor + `INVITE`, `MANAGE_PERMISSIONS` |
+| Owner | Every capability including `DELETE` |
+
+Every project appears in the server directory and has one public-access policy:
+
+| Public mode | Anonymous project permissions |
+|---|---|
+| Request only | Metadata only; a player may request a role |
+| Public Viewer | Viewer |
+| Public Supplier | Builder |
+| Public Editor | Editor |
+
+Public access never grants invitations, permission management or deletion. Accepted member rights
+take precedence over the public preset. Invitations and access requests are distinct persisted
+states so either side can cancel or respond without accidentally accepting the other flow.
+Container capabilities govern Logisticmatica's shared marks and snapshots only; they never bypass
+vanilla interaction rules or a server's claim/protection plugins.
 
 ## Schematic validation and storage
 
@@ -79,6 +105,8 @@ bytes are addressed by SHA-256 and written atomically to:
 ```
 
 Downloaded bytes are checked against the advertised SHA-256 before the client writes or loads them.
+Replacing a schematic writes a new content-addressed blob and changes only the project's hash and
+revision; its UUID, transform, members, permissions, substitutions and containers remain intact.
 The server package imports only vanilla Minecraft, Fabric and the bundled permissions API; it has no
 Litematica or MaLiLib dependency.
 
@@ -98,6 +126,7 @@ label and peek views.
 
 ## Compatibility
 
-Protocol changes that break message layout must increment `ShareProtocol.VERSION` and use new payload
-identifiers. A client and server with different protocol versions reject sharing while leaving all
-non-sharing client features usable.
+Protocol changes that break message layout must increment `ShareProtocol.VERSION`. A client and
+server with different protocol versions reject sharing while leaving all non-sharing client features
+usable. The stable `_v1` payload identifiers are transport channel names; compatibility is decided by
+the version field inside every envelope.

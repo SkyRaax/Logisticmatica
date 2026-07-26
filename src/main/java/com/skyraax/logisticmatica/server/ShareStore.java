@@ -151,7 +151,6 @@ public final class ShareStore {
 			}
 
 			JsonObject json = parsed.getAsJsonObject();
-			if (!json.has("projects") || !json.get("projects").isJsonArray()) {
 			if (json.has("serverId")) {
 				try {
 					this.serverId = UUID.fromString(json.get("serverId").getAsString());
@@ -159,6 +158,7 @@ public final class ShareStore {
 					throw new IOException("Invalid sharing server id", e);
 				}
 			}
+			if (!json.has("projects") || !json.get("projects").isJsonArray()) {
 				return;
 			}
 

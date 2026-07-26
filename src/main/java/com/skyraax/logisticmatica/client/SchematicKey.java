@@ -1,5 +1,6 @@
 package com.skyraax.logisticmatica.client;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -17,7 +18,35 @@ public final class SchematicKey {
 
 	public static String of(LitematicaSchematic schematic) {
 		Path file = schematic.getFile();
-		return file != null ? file.toString() : "name:" + schematic.getMetadata().getName();
+		return file != null ? normalize(file) : "name:" + schematic.getMetadata().getName();
+	}
+
+	/**
+	 * Returns whether a persisted key points at this schematic. Older Logisticmatica versions stored
+	 * Litematica's path verbatim, which could switch between relative and absolute forms across a
+	 * restart. Existing bindings are migrated to {@link #of} as soon as the schematic is loaded.
+	 */
+	public static boolean refersTo(String storedKey, LitematicaSchematic schematic) {
+		String current = of(schematic);
+		if (storedKey.equals(current)) return true;
+		if (storedKey.startsWith("name:") || schematic.getFile() == null) return false;
+
+		try {
+			Path stored = Path.of(storedKey);
+			Path actual = schematic.getFile();
+			if (normalize(stored).equals(normalize(actual))) return true;
+			return Files.exists(stored) && Files.exists(actual) && Files.isSameFile(stored, actual);
+		} catch (RuntimeException | java.io.IOException ignored) {
+			return false;
+		}
+	}
+
+	private static String normalize(Path file) {
+		try {
+			return file.toAbsolutePath().normalize().toString();
+		} catch (RuntimeException ignored) {
+			return file.normalize().toString();
+		}
 	}
 
 	/** All currently loaded schematics, keyed for lookup — used to show only loaded schematics' containers. */

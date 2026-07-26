@@ -62,9 +62,15 @@ public class GuiSharing extends GuiListBase<SharedProjectView, WidgetSharedProje
 		x += refresh.getWidth() + 4;
 
 		ButtonGeneric share = new ButtonGeneric(x, y, -1, 20,
-				StringUtils.translate("logisticmatica.gui.share.share_selected"));
+				StringUtils.translate("logisticmatica.gui.share.choose_placement"));
 		share.setEnabled(this.sharing.serverAvailable());
+		share.setHoverStrings("logisticmatica.gui.share.choose_placement.hover");
 		this.addButton(share, new ActionListener(Action.SHARE, this));
+		x += share.getWidth() + 4;
+
+		ButtonGeneric help = new ButtonGeneric(x, y, -1, 20,
+				StringUtils.translate("logisticmatica.gui.share.help"));
+		this.addButton(help, new ActionListener(Action.HELP, this));
 
 		String back = StringUtils.translate("logisticmatica.gui.button.back");
 		ButtonGeneric backButton = new ButtonGeneric(this.getScreenWidth() - this.getStringWidth(back) - 30,
@@ -91,12 +97,21 @@ public class GuiSharing extends GuiListBase<SharedProjectView, WidgetSharedProje
 		}
 	}
 
-	private enum Action { REFRESH, SHARE, BACK }
+	private enum Action { REFRESH, SHARE, HELP, BACK }
 	private record ActionListener(Action action, GuiSharing gui) implements IButtonActionListener {
 		@Override public void actionPerformedWithButton(ButtonBase button, int mouseButton) {
 			switch (this.action) {
 				case REFRESH -> this.gui.sharing.refreshProjects();
-				case SHARE -> this.gui.sharing.shareSelectedPlacement();
+				case SHARE -> {
+					GuiPlacementPicker picker = new GuiPlacementPicker(GuiPlacementPicker.Mode.SHARE, null);
+					picker.setParent(this.gui);
+					GuiBase.openGui(picker);
+				}
+				case HELP -> {
+					GuiSharingHelp help = new GuiSharingHelp();
+					help.setParent(this.gui);
+					GuiBase.openGui(help);
+				}
 				case BACK -> GuiBase.openGui(this.gui.getParent());
 			}
 		}

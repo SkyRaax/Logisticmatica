@@ -20,12 +20,16 @@ public record SharedProjectView(
 		String schematicHash,
 		int schematicSize,
 		int myPermissions,
+		ShareAccess publicAccess,
+		boolean member,
 		boolean pendingInvite,
+		boolean accessRequested,
 		List<SharedMemberView> members,
 		Map<String, String> substitutions,
 		List<SharedContainerView> containers) {
 	public SharedProjectView {
 		myPermissions = SharePermission.sanitize(myPermissions);
+		publicAccess = publicAccess != null ? publicAccess : ShareAccess.REQUEST_ONLY;
 		members = List.copyOf(members);
 		substitutions = Map.copyOf(substitutions);
 		containers = List.copyOf(containers);

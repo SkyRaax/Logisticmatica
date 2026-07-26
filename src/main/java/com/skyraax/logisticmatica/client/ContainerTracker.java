@@ -90,6 +90,31 @@ public class ContainerTracker {
 		return this.markedBySchematic;
 	}
 
+	/** Migrates bindings written with an older relative/unnormalized path to the current key. */
+	public void reconcileSchematic(LitematicaSchematic schematic) {
+		if (this.reconcileSchematicKey(schematic)) this.save();
+	}
+
+	private boolean reconcileSchematicKey(LitematicaSchematic schematic) {
+		String current = SchematicKey.of(schematic);
+		LinkedHashSet<BlockPos> migrated = new LinkedHashSet<>();
+		boolean changed = false;
+
+		for (String stored : Set.copyOf(this.markedBySchematic.keySet())) {
+			if (stored.equals(current) || !SchematicKey.refersTo(stored, schematic)) continue;
+			LinkedHashSet<BlockPos> positions = this.markedBySchematic.remove(stored);
+			if (positions == null) continue;
+			migrated.addAll(positions);
+			for (BlockPos pos : positions) this.keyByPos.replace(pos, stored, current);
+			changed = true;
+		}
+
+		if (!migrated.isEmpty()) {
+			this.markedBySchematic.computeIfAbsent(current, ignored -> new LinkedHashSet<>()).addAll(migrated);
+		}
+		return changed;
+	}
+
 	/**
 	 * Toggles the marked state of a container. If already marked (under any schematic) it is unmarked;
 	 * otherwise it is bound to {@code schematicKey}. @return true if now marked.
@@ -213,12 +238,12 @@ public class ContainerTracker {
 			JsonArray array = new JsonArray();
 
 			for (BlockPos pos : schematic.getValue()) {
+				if (this.serverBindings.contains(pos)) continue;
 				JsonObject entry = new JsonObject();
 				entry.add("pos", JsonUtils.blockPosToJson(pos));
 
 				Object2IntOpenHashMap<ItemType> snapshot = this.contents.get(pos);
 				if (snapshot != null && !snapshot.isEmpty()) {
-				if (this.serverBindings.contains(pos)) continue;
 					JsonObject items = new JsonObject();
 					for (Object2IntMap.Entry<ItemType> item : snapshot.object2IntEntrySet()) {
 						items.addProperty(idOf(item.getKey()), item.getIntValue());
@@ -282,6 +307,12 @@ public class ContainerTracker {
 				}
 			}
 		}
+
+		boolean migrated = false;
+		for (LitematicaSchematic schematic : SchematicKey.loadedByKey().values()) {
+			migrated |= this.reconcileSchematicKey(schematic);
+		}
+		if (migrated) this.save();
 
 		Logisticmatica.LOGGER.debug("[{}] Loaded tracked containers for {} schematic(s).",
 				Logisticmatica.MOD_NAME, this.markedBySchematic.size());

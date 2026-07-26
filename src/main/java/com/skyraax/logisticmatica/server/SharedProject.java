@@ -12,6 +12,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
+import com.skyraax.logisticmatica.share.ShareAccess;
 import com.skyraax.logisticmatica.share.SharePermission;
 import com.skyraax.logisticmatica.share.SharedContainerView;
 import com.skyraax.logisticmatica.share.SharedMemberView;
@@ -19,7 +20,7 @@ import com.skyraax.logisticmatica.share.SharedProjectView;
 
 /** Mutable server-owned state for one shared placement. Accessed only on the logical server thread. */
 public final class SharedProject {
-	public static final int SCHEMA_VERSION = 1;
+	public static final int SCHEMA_VERSION = 2;
 
 	public record ContainerKey(String dimension, int x, int y, int z) {
 	}
@@ -29,23 +30,34 @@ public final class SharedProject {
 		private String playerName;
 		private int permissions;
 		private boolean accepted;
+		private boolean accessRequested;
 
-		public Member(UUID playerId, String playerName, int permissions, boolean accepted) {
+		public Member(UUID playerId, String playerName, int permissions, boolean accepted, boolean accessRequested) {
 			this.playerId = playerId;
 			this.playerName = playerName;
 			this.permissions = SharePermission.sanitize(permissions) | SharePermission.VIEW.mask();
 			this.accepted = accepted;
+			this.accessRequested = accessRequested && !accepted;
+		}
+
+		public Member(UUID playerId, String playerName, int permissions, boolean accepted) {
+			this(playerId, playerName, permissions, accepted, false);
 		}
 
 		public UUID playerId() { return this.playerId; }
 		public String playerName() { return this.playerName; }
 		public int permissions() { return this.permissions; }
 		public boolean accepted() { return this.accepted; }
+		public boolean accessRequested() { return this.accessRequested; }
 		public void setPlayerName(String playerName) { this.playerName = playerName; }
 		public void setPermissions(int permissions) {
 			this.permissions = SharePermission.sanitize(permissions) | SharePermission.VIEW.mask();
 		}
-		public void setAccepted(boolean accepted) { this.accepted = accepted; }
+		public void setAccepted(boolean accepted) {
+			this.accepted = accepted;
+			if (accepted) this.accessRequested = false;
+		}
+		public void setAccessRequested(boolean requested) { this.accessRequested = requested && !this.accepted; }
 	}
 
 	private final UUID id;
@@ -61,6 +73,7 @@ public final class SharedProject {
 	private int mirror;
 	private String schematicHash;
 	private int schematicSize;
+	private ShareAccess publicAccess = ShareAccess.REQUEST_ONLY;
 	private final Map<UUID, Member> members = new LinkedHashMap<>();
 	private final Map<String, String> substitutions = new LinkedHashMap<>();
 	private final Map<ContainerKey, Map<String, Integer>> containers = new LinkedHashMap<>();
@@ -95,16 +108,13 @@ public final class SharedProject {
 	public int mirror() { return this.mirror; }
 	public String schematicHash() { return this.schematicHash; }
 	public int schematicSize() { return this.schematicSize; }
+	public ShareAccess publicAccess() { return this.publicAccess; }
 	public Map<UUID, Member> members() { return this.members; }
 	public Map<String, String> substitutions() { return this.substitutions; }
 	public Map<ContainerKey, Map<String, Integer>> containers() { return this.containers; }
 
 	public boolean visibleTo(UUID playerId) {
-		if (this.ownerId.equals(playerId)) {
-			return true;
-		}
-		Member member = this.members.get(playerId);
-		return member != null;
+		return true;
 	}
 
 	public boolean acceptedBy(UUID playerId) {
@@ -115,16 +125,31 @@ public final class SharedProject {
 		return member != null && member.accepted();
 	}
 
+	public boolean accessRequestedBy(UUID playerId) {
+		Member member = this.members.get(playerId);
+		return member != null && member.accessRequested();
+	}
+
+	public boolean isMember(UUID playerId) {
+		return this.ownerId.equals(playerId) || this.acceptedBy(playerId);
+	}
+
 	public int permissionsFor(UUID playerId) {
 		if (this.ownerId.equals(playerId)) {
 			return SharePermission.ALL;
 		}
 		Member member = this.members.get(playerId);
-		return member != null && member.accepted() ? member.permissions() : 0;
+		return member != null && member.accepted() ? member.permissions() : this.publicAccess.permissions();
 	}
 
 	public boolean can(UUID playerId, SharePermission permission) {
 		return permission.isIn(this.permissionsFor(playerId));
+	}
+
+	public void setPublicAccess(ShareAccess access) {
+		if (this.publicAccess == access) return;
+		this.publicAccess = access;
+		this.bumpRevision();
 	}
 
 	public void updateTransform(String dimension, int x, int y, int z, int rotation, int mirror) {
@@ -152,17 +177,18 @@ public final class SharedProject {
 	public void invite(UUID playerId, String playerName, int permissions) {
 		Member member = this.members.get(playerId);
 		if (member == null) {
-			this.members.put(playerId, new Member(playerId, playerName, permissions, false));
+			this.members.put(playerId, new Member(playerId, playerName, permissions, false, false));
 		} else {
 			member.setPlayerName(playerName);
 			member.setPermissions(permissions);
+			member.setAccessRequested(false);
 		}
 		this.bumpRevision();
 	}
 
 	public void respondToInvite(UUID playerId, boolean accepted) {
 		Member member = this.members.get(playerId);
-		if (member == null) {
+		if (member == null || member.accessRequested()) {
 			return;
 		}
 		if (accepted) {
@@ -171,6 +197,31 @@ public final class SharedProject {
 			this.members.remove(playerId);
 		}
 		this.bumpRevision();
+	}
+
+	public void requestAccess(UUID playerId, String playerName, int permissions) {
+		Member member = this.members.get(playerId);
+		if (member == null) {
+			this.members.put(playerId, new Member(playerId, playerName, permissions, false, true));
+		} else if (!member.accepted()) {
+			member.setPlayerName(playerName);
+			member.setPermissions(permissions);
+			member.setAccessRequested(true);
+		}
+		this.bumpRevision();
+	}
+
+	public boolean respondToAccessRequest(UUID playerId, boolean accepted, int permissions) {
+		Member member = this.members.get(playerId);
+		if (member == null || !member.accessRequested()) return false;
+		if (accepted) {
+			member.setPermissions(permissions);
+			member.setAccepted(true);
+		} else {
+			this.members.remove(playerId);
+		}
+		this.bumpRevision();
+		return true;
 	}
 
 	public void setPermissions(UUID playerId, int permissions) {
@@ -223,30 +274,34 @@ public final class SharedProject {
 	public SharedProjectView viewFor(UUID playerId, boolean administrator) {
 		int permissions = administrator ? SharePermission.ALL : this.permissionsFor(playerId);
 		Member viewer = this.members.get(playerId);
-		boolean pending = !administrator && viewer != null && !viewer.accepted();
+		boolean pending = !administrator && viewer != null && !viewer.accepted() && !viewer.accessRequested();
+		boolean requested = !administrator && viewer != null && viewer.accessRequested();
+		boolean member = this.isMember(playerId);
+		boolean mayView = administrator || SharePermission.VIEW.isIn(permissions);
+		boolean maySeeRoster = administrator || this.ownerId.equals(playerId)
+				|| SharePermission.INVITE.isIn(permissions)
+				|| SharePermission.MANAGE_PERMISSIONS.isIn(permissions);
 
 		List<SharedMemberView> memberViews = new ArrayList<>();
 		memberViews.add(new SharedMemberView(this.ownerId, this.ownerName, SharePermission.ALL, true));
-		this.members.values().stream()
-				.sorted(Comparator.comparing(Member::playerName, String.CASE_INSENSITIVE_ORDER))
-				.map(member -> new SharedMemberView(member.playerId(), member.playerName(),
-						member.permissions(), member.accepted()))
-				.forEach(memberViews::add);
+		if (maySeeRoster) {
+			this.members.values().stream()
+					.sorted(Comparator.comparing(Member::playerName, String.CASE_INSENSITIVE_ORDER))
+					.map(entry -> new SharedMemberView(entry.playerId(), entry.playerName(),
+							entry.permissions(), entry.accepted(), entry.accessRequested()))
+					.forEach(memberViews::add);
+		}
 
-		List<SharedContainerView> containerViews = this.containers.entrySet().stream()
+		List<SharedContainerView> containerViews = mayView ? this.containers.entrySet().stream()
 				.map(entry -> new SharedContainerView(entry.getKey().dimension(), entry.getKey().x(),
 						entry.getKey().y(), entry.getKey().z(), entry.getValue()))
-				.toList();
-
-		if (pending && !administrator) {
-			memberViews = List.of(new SharedMemberView(this.ownerId, this.ownerName, SharePermission.ALL, true));
-			containerViews = List.of();
-		}
+				.toList() : List.of();
 
 		return new SharedProjectView(this.id, this.revision, this.name, this.ownerId, this.ownerName,
 				this.dimension, this.x, this.y, this.z, this.rotation, this.mirror,
-				this.schematicHash, this.schematicSize, permissions, pending, memberViews,
-				pending && !administrator ? Map.of() : this.substitutions, containerViews);
+				mayView ? this.schematicHash : "", mayView ? this.schematicSize : 0, permissions,
+				this.publicAccess, member, pending, requested, memberViews,
+				mayView ? this.substitutions : Map.of(), containerViews);
 	}
 
 	public JsonObject toJson() {
@@ -265,6 +320,7 @@ public final class SharedProject {
 		json.addProperty("mirror", this.mirror);
 		json.addProperty("schematicHash", this.schematicHash);
 		json.addProperty("schematicSize", this.schematicSize);
+		json.addProperty("publicAccess", this.publicAccess.name());
 
 		JsonArray membersJson = new JsonArray();
 		for (Member member : this.members.values()) {
@@ -273,6 +329,7 @@ public final class SharedProject {
 			entry.addProperty("playerName", member.playerName());
 			entry.addProperty("permissions", member.permissions());
 			entry.addProperty("accepted", member.accepted());
+			entry.addProperty("accessRequested", member.accessRequested());
 			membersJson.add(entry);
 		}
 		json.add("members", membersJson);
@@ -308,13 +365,17 @@ public final class SharedProject {
 					json.get("rotation").getAsInt(), json.get("mirror").getAsInt(),
 					json.get("schematicHash").getAsString(), json.get("schematicSize").getAsInt());
 			project.revision = Math.max(1L, json.get("revision").getAsLong());
+			if (json.has("publicAccess")) {
+				project.publicAccess = ShareAccess.valueOf(json.get("publicAccess").getAsString());
+			}
 
 			if (json.has("members") && json.get("members").isJsonArray()) {
 				for (JsonElement raw : json.getAsJsonArray("members")) {
 					JsonObject member = raw.getAsJsonObject();
 					UUID playerId = UUID.fromString(member.get("playerId").getAsString());
 					project.members.put(playerId, new Member(playerId, member.get("playerName").getAsString(),
-							member.get("permissions").getAsInt(), member.get("accepted").getAsBoolean()));
+							member.get("permissions").getAsInt(), member.get("accepted").getAsBoolean(),
+							member.has("accessRequested") && member.get("accessRequested").getAsBoolean()));
 				}
 			}
 

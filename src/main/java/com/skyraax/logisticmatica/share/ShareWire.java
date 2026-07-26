@@ -61,6 +61,27 @@ public final class ShareWire {
 		return projects;
 	}
 
+	public static byte[] encodePlayers(List<SharedPlayerView> players) {
+		return encode(writer -> {
+			writer.writeCount(players.size(), ShareProtocol.MAX_ONLINE_PLAYERS);
+			for (SharedPlayerView player : players) {
+				writer.writeUuid(player.playerId());
+				writer.writeString(player.playerName());
+			}
+		});
+	}
+
+	public static List<SharedPlayerView> decodePlayers(byte[] body) throws IOException {
+		Reader reader = decode(body);
+		int count = reader.readCount(ShareProtocol.MAX_ONLINE_PLAYERS);
+		List<SharedPlayerView> players = new ArrayList<>(count);
+		for (int i = 0; i < count; i++) {
+			players.add(new SharedPlayerView(reader.readUuid(), reader.readString()));
+		}
+		reader.requireFinished();
+		return players;
+	}
+
 	public static final class Writer {
 		private final DataOutputStream output;
 
@@ -132,7 +153,10 @@ public final class ShareWire {
 			this.writeString(project.schematicHash());
 			this.writeInt(project.schematicSize());
 			this.writeInt(project.myPermissions());
+			this.writeInt(project.publicAccess().ordinal());
+			this.writeBoolean(project.member());
 			this.writeBoolean(project.pendingInvite());
+			this.writeBoolean(project.accessRequested());
 
 			this.writeCount(project.members().size(), ShareProtocol.MAX_MEMBERS_PER_PROJECT + 1);
 			for (SharedMemberView member : project.members()) {
@@ -140,6 +164,7 @@ public final class ShareWire {
 				this.writeString(member.playerName());
 				this.writeInt(member.permissions());
 				this.writeBoolean(member.accepted());
+				this.writeBoolean(member.accessRequested());
 			}
 
 			this.writeStringMap(project.substitutions(), ShareProtocol.MAX_SUBSTITUTIONS_PER_PROJECT);
@@ -237,12 +262,16 @@ public final class ShareWire {
 			String schematicHash = this.readString();
 			int schematicSize = this.readInt();
 			int myPermissions = this.readInt();
+			ShareAccess publicAccess = ShareAccess.byId(this.readInt());
+			boolean member = this.readBoolean();
 			boolean pendingInvite = this.readBoolean();
+			boolean accessRequested = this.readBoolean();
 
 			int memberCount = this.readCount(ShareProtocol.MAX_MEMBERS_PER_PROJECT + 1);
 			List<SharedMemberView> members = new ArrayList<>(memberCount);
 			for (int i = 0; i < memberCount; i++) {
-				members.add(new SharedMemberView(this.readUuid(), this.readString(), this.readInt(), this.readBoolean()));
+				members.add(new SharedMemberView(this.readUuid(), this.readString(), this.readInt(),
+						this.readBoolean(), this.readBoolean()));
 			}
 
 			Map<String, String> substitutions = this.readStringMap(ShareProtocol.MAX_SUBSTITUTIONS_PER_PROJECT);
@@ -262,8 +291,8 @@ public final class ShareWire {
 			}
 
 			return new SharedProjectView(id, revision, name, ownerId, ownerName, dimension, x, y, z,
-					rotation, mirror, schematicHash, schematicSize, myPermissions, pendingInvite,
-					members, substitutions, containers);
+					rotation, mirror, schematicHash, schematicSize, myPermissions, publicAccess,
+					member, pendingInvite, accessRequested, members, substitutions, containers);
 		}
 	}
 }

@@ -34,14 +34,22 @@ public class WidgetSharedProjectEntry extends WidgetListEntryBase<SharedProjectV
 					&& this.project.ownerId().equals(Minecraft.getInstance().player.getUUID());
 			String status = this.project.pendingInvite()
 					? StringUtils.translate("logisticmatica.gui.share.pending")
-					: owner ? StringUtils.translate("logisticmatica.gui.share.role.owner")
-					: role(this.project.myPermissions());
+					: this.project.accessRequested()
+							? StringUtils.translate("logisticmatica.gui.share.request_sent")
+							: owner ? StringUtils.translate("logisticmatica.gui.share.role.owner")
+							: this.project.member() ? role(this.project.myPermissions())
+							: this.project.can(SharePermission.VIEW)
+									? StringUtils.translate("logisticmatica.gui.share.public_role",
+											role(this.project.myPermissions()))
+									: StringUtils.translate("logisticmatica.gui.share.request_access");
 			this.drawString(ctx, this.x + 6, this.y + 5, 0xFFFFFFFF, this.project.name());
 			String detail = StringUtils.translate("logisticmatica.gui.share.project_detail",
 					this.project.ownerName(), this.project.dimension(), this.project.x(), this.project.y(), this.project.z());
 			this.drawString(ctx, this.x + 6, this.y + 18, 0xFFAAAAAA, detail);
+			int statusColor = this.project.pendingInvite() || this.project.accessRequested()
+					? 0xFFFFAA00 : this.project.can(SharePermission.VIEW) ? 0xFF55FF55 : 0xFFAAAAAA;
 			this.drawString(ctx, this.x + this.width - this.getStringWidth(status) - 8,
-					this.y + 5, this.project.pendingInvite() ? 0xFFFFAA00 : 0xFF55FF55, status);
+					this.y + 5, statusColor, status);
 		}
 		super.render(ctx, mouseX, mouseY, selected);
 	}

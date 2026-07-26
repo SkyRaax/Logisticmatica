@@ -16,8 +16,8 @@ public enum SharePermission {
 	public static final int ALL = (1 << values().length) - 1;
 	public static final int VIEWER = VIEW.mask;
 	public static final int BUILDER = VIEW.mask | MANAGE_CONTAINERS.mask;
-	public static final int EDITOR = BUILDER | MOVE.mask | SUBSTITUTE.mask;
-	public static final int MANAGER = EDITOR | UPDATE_SCHEMATIC.mask | INVITE.mask | MANAGE_PERMISSIONS.mask;
+	public static final int EDITOR = BUILDER | MOVE.mask | UPDATE_SCHEMATIC.mask | SUBSTITUTE.mask;
+	public static final int MANAGER = EDITOR | INVITE.mask | MANAGE_PERMISSIONS.mask;
 
 	private final int mask;
 

@@ -28,9 +28,11 @@ import me.lucko.fabric.api.permissions.v0.Permissions;
 import com.skyraax.logisticmatica.Logisticmatica;
 import com.skyraax.logisticmatica.share.ClientboundSharePayload;
 import com.skyraax.logisticmatica.share.ServerboundSharePayload;
+import com.skyraax.logisticmatica.share.ShareAccess;
 import com.skyraax.logisticmatica.share.SharePermission;
 import com.skyraax.logisticmatica.share.ShareProtocol;
 import com.skyraax.logisticmatica.share.ShareWire;
+import com.skyraax.logisticmatica.share.SharedPlayerView;
 import com.skyraax.logisticmatica.share.SharedProjectView;
 
 /** Server-authoritative sharing service: validates every mutation, persists it and broadcasts views. */
@@ -92,6 +94,10 @@ public final class ShareServer {
 				case LEAVE_PROJECT -> this.handleLeave(player, payload);
 				case TOGGLE_CONTAINER -> this.handleContainerToggle(player, payload);
 				case REFRESH_CONTAINER -> this.handleContainerRefresh(player, payload);
+				case LIST_PLAYERS -> this.sendPlayers(player, payload.requestId());
+				case SET_PUBLIC_ACCESS -> this.handlePublicAccess(player, payload);
+				case REQUEST_ACCESS -> this.handleAccessRequest(player, payload);
+				case RESPOND_ACCESS -> this.handleAccessResponse(player, payload);
 			}
 		} catch (IOException | IllegalArgumentException e) {
 			Logisticmatica.LOGGER.warn("[{}] Rejected sharing action {} from {}: {}",
@@ -114,6 +120,7 @@ public final class ShareServer {
 		});
 		this.send(player, ClientboundSharePayload.of(ShareProtocol.ClientboundEvent.HELLO, payload.requestId(), body));
 		this.sendProjects(player, UUID.randomUUID());
+		this.sendPlayers(player, UUID.randomUUID());
 		Logisticmatica.LOGGER.debug("[{}] Sharing handshake with {} (client {}).",
 				Logisticmatica.MOD_NAME, player.getName().getString(), clientVersion);
 	}
@@ -233,7 +240,8 @@ public final class ShareServer {
 	private void handleInvite(ServerPlayer player, ServerboundSharePayload payload) throws IOException {
 		ShareWire.Reader reader = ShareWire.decode(payload.body());
 		UUID projectId = reader.readUuid();
-		String targetName = reader.readString();
+		UUID targetId = reader.readUuid();
+		reader.readString(); // client-side display name; server identity remains authoritative
 		int requestedPermissions = SharePermission.sanitize(reader.readInt()) | SharePermission.VIEW.mask();
 		reader.requireFinished();
 
@@ -241,7 +249,7 @@ public final class ShareServer {
 		if (project == null) {
 			return;
 		}
-		ServerPlayer target = player.level().getServer().getPlayerList().getPlayerByName(targetName);
+		ServerPlayer target = player.level().getServer().getPlayerList().getPlayer(targetId);
 		if (target == null) {
 			this.sendError(player, payload.requestId(), "logisticmatica.share.error.player_offline");
 			return;
@@ -269,15 +277,85 @@ public final class ShareServer {
 		boolean accepted = reader.readBoolean();
 		reader.requireFinished();
 		SharedProject project = this.store.get(projectId);
-		if (project == null || !project.visibleTo(player.getUUID()) || project.acceptedBy(player.getUUID())) {
+		SharedProject.Member invitation = project != null ? project.members().get(player.getUUID()) : null;
+		if (project == null || invitation == null || invitation.accepted() || invitation.accessRequested()) {
 			this.sendError(player, payload.requestId(), "logisticmatica.share.error.no_invite");
 			return;
 		}
 		project.respondToInvite(player.getUUID(), accepted);
 		this.changed(project);
-		if (!accepted) {
-			this.sendRemoved(player, project.id());
+	}
+
+	private void handlePublicAccess(ServerPlayer player, ServerboundSharePayload payload) throws IOException {
+		ShareWire.Reader reader = ShareWire.decode(payload.body());
+		UUID projectId = reader.readUuid();
+		long expectedRevision = reader.readLong();
+		ShareAccess access = ShareAccess.byId(reader.readInt());
+		reader.requireFinished();
+
+		SharedProject project = this.requireProject(player, projectId,
+				SharePermission.MANAGE_PERMISSIONS, payload.requestId());
+		if (!this.checkRevision(player, project, expectedRevision, payload.requestId())) return;
+		project.setPublicAccess(access);
+		this.changed(project);
+		this.sendNotice(player, payload.requestId(), "logisticmatica.share.notice.public_access_updated");
+	}
+
+	private void handleAccessRequest(ServerPlayer player, ServerboundSharePayload payload) throws IOException {
+		ShareWire.Reader reader = ShareWire.decode(payload.body());
+		UUID projectId = reader.readUuid();
+		int requestedPermissions = (SharePermission.sanitize(reader.readInt()) & SharePermission.MANAGER)
+				| SharePermission.VIEW.mask();
+		reader.requireFinished();
+		SharedProject project = this.store.get(projectId);
+		if (project == null || project.ownerId().equals(player.getUUID())
+				|| project.acceptedBy(player.getUUID())) {
+			this.sendError(player, payload.requestId(), "logisticmatica.share.error.already_has_access");
+			return;
 		}
+		SharedProject.Member existing = project.members().get(player.getUUID());
+		if (existing != null && !existing.accessRequested()) {
+			this.sendError(player, payload.requestId(), "logisticmatica.share.error.pending_invite");
+			return;
+		}
+		if (existing == null && project.members().size() >= ShareProtocol.MAX_MEMBERS_PER_PROJECT) {
+			this.sendError(player, payload.requestId(), "logisticmatica.share.error.member_limit");
+			return;
+		}
+		project.requestAccess(player.getUUID(), player.getName().getString(), requestedPermissions);
+		this.changed(project);
+		this.sendNotice(player, payload.requestId(), "logisticmatica.share.notice.access_requested");
+		MinecraftServer server = this.server;
+		ServerPlayer owner = server != null ? server.getPlayerList().getPlayer(project.ownerId()) : null;
+		if (owner != null) this.sendNotice(owner, UUID.randomUUID(),
+				"logisticmatica.share.notice.access_request_received",
+				player.getName().getString(), project.name());
+	}
+
+	private void handleAccessResponse(ServerPlayer player, ServerboundSharePayload payload) throws IOException {
+		ShareWire.Reader reader = ShareWire.decode(payload.body());
+		UUID projectId = reader.readUuid();
+		long expectedRevision = reader.readLong();
+		UUID targetId = reader.readUuid();
+		boolean accepted = reader.readBoolean();
+		int requestedPermissions = SharePermission.sanitize(reader.readInt()) | SharePermission.VIEW.mask();
+		reader.requireFinished();
+
+		SharedProject project = this.requireProject(player, projectId,
+				SharePermission.MANAGE_PERMISSIONS, payload.requestId());
+		if (!this.checkRevision(player, project, expectedRevision, payload.requestId())) return;
+		int grantable = this.isAdministrator(player) || project.ownerId().equals(player.getUUID())
+				? SharePermission.ALL : project.permissionsFor(player.getUUID());
+		if (!project.respondToAccessRequest(targetId, accepted, requestedPermissions & grantable)) {
+			this.sendError(player, payload.requestId(), "logisticmatica.share.error.no_access_request");
+			return;
+		}
+		this.changed(project);
+		MinecraftServer server = this.server;
+		ServerPlayer target = server != null ? server.getPlayerList().getPlayer(targetId) : null;
+		if (target != null) this.sendNotice(target, UUID.randomUUID(), accepted
+				? "logisticmatica.share.notice.access_approved"
+				: "logisticmatica.share.notice.access_declined", project.name());
 	}
 
 	private void handlePermissions(ServerPlayer player, ServerboundSharePayload payload) throws IOException {
@@ -310,9 +388,6 @@ public final class ShareServer {
 			return;
 		}
 		this.changed(project);
-		MinecraftServer server = this.server;
-		ServerPlayer target = server != null ? server.getPlayerList().getPlayer(targetId) : null;
-		if (target != null) this.sendRemoved(target, projectId);
 	}
 
 
@@ -325,9 +400,7 @@ public final class ShareServer {
 		this.store.remove(projectId);
 		this.store.save();
 		for (ServerPlayer online : player.level().getServer().getPlayerList().getPlayers()) {
-			if (project.visibleTo(online.getUUID()) || this.isAdministrator(online)) {
-				this.sendRemoved(online, projectId);
-			}
+			this.sendRemoved(online, projectId);
 		}
 	}
 
@@ -339,7 +412,6 @@ public final class ShareServer {
 			return;
 		}
 		this.changed(project);
-		this.sendRemoved(player, projectId);
 	}
 
 	private void handleContainerToggle(ServerPlayer player, ServerboundSharePayload payload) throws IOException {
@@ -462,12 +534,23 @@ public final class ShareServer {
 	private void sendProjects(ServerPlayer player, UUID requestId) {
 		boolean administrator = this.isAdministrator(player);
 		List<SharedProjectView> projects = this.store.projects().stream()
-				.filter(project -> administrator || project.visibleTo(player.getUUID()))
 				.sorted(Comparator.comparing(SharedProject::name, String.CASE_INSENSITIVE_ORDER))
 				.map(project -> project.viewFor(player.getUUID(), administrator))
 				.toList();
 		this.send(player, ClientboundSharePayload.of(ShareProtocol.ClientboundEvent.PROJECTS,
 				requestId, ShareWire.encodeProjects(projects)));
+	}
+
+	private void sendPlayers(ServerPlayer player, UUID requestId) {
+		MinecraftServer server = this.server;
+		if (server == null) return;
+		List<SharedPlayerView> players = server.getPlayerList().getPlayers().stream()
+				.sorted(Comparator.comparing(online -> online.getName().getString(), String.CASE_INSENSITIVE_ORDER))
+				.limit(ShareProtocol.MAX_ONLINE_PLAYERS)
+				.map(online -> new SharedPlayerView(online.getUUID(), online.getName().getString()))
+				.toList();
+		this.send(player, ClientboundSharePayload.of(ShareProtocol.ClientboundEvent.PLAYERS,
+				requestId, ShareWire.encodePlayers(players)));
 	}
 
 	private void sendProjectChanged(SharedProject project) {
@@ -476,10 +559,7 @@ public final class ShareServer {
 			return;
 		}
 		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-			boolean administrator = this.isAdministrator(player);
-			if (administrator || project.visibleTo(player.getUUID())) {
-				this.sendProject(player, project, UUID.randomUUID());
-			}
+			this.sendProject(player, project, UUID.randomUUID());
 		}
 	}
 
@@ -531,13 +611,20 @@ public final class ShareServer {
 		}
 	}
 
-	private void sendNotice(ServerPlayer player, UUID requestId, String translationKey) {
-		byte[] body = ShareWire.encode(writer -> writer.writeString(translationKey));
+	private void sendNotice(ServerPlayer player, UUID requestId, String translationKey, String... arguments) {
+		byte[] body = ShareWire.encode(writer -> {
+			writer.writeString(translationKey);
+			writer.writeInt(arguments.length);
+			for (String argument : arguments) writer.writeString(argument);
+		});
 		this.send(player, ClientboundSharePayload.of(ShareProtocol.ClientboundEvent.NOTICE, requestId, body));
 	}
 
 	private void sendError(ServerPlayer player, UUID requestId, String translationKey) {
-		byte[] body = ShareWire.encode(writer -> writer.writeString(translationKey));
+		byte[] body = ShareWire.encode(writer -> {
+			writer.writeString(translationKey);
+			writer.writeInt(0);
+		});
 		this.send(player, ClientboundSharePayload.of(ShareProtocol.ClientboundEvent.ERROR, requestId, body));
 	}
 

@@ -18,13 +18,22 @@ class ShareWireTest {
 		UUID ownerId = UUID.randomUUID();
 		SharedProjectView expected = new SharedProjectView(projectId, 42, "Spawn perimeter",
 				ownerId, "SkyRaax", "minecraft:overworld", 12, 64, -8, 1, 2,
-				"a".repeat(64), 1234, SharePermission.EDITOR, false,
+				"a".repeat(64), 1234, SharePermission.EDITOR, ShareAccess.PUBLIC_EDITOR,
+				true, false, false,
 				List.of(new SharedMemberView(ownerId, "SkyRaax", SharePermission.ALL, true)),
 				Map.of("minecraft:spruce_planks", "minecraft:oak_planks"),
 				List.of(new SharedContainerView("minecraft:overworld", 10, 65, -9,
 						Map.of("minecraft:redstone", 128))));
 
 		assertEquals(List.of(expected), ShareWire.decodeProjects(ShareWire.encodeProjects(List.of(expected))));
+	}
+
+	@Test
+	void onlinePlayersRoundTripWithStableIds() throws IOException {
+		List<SharedPlayerView> expected = List.of(
+				new SharedPlayerView(UUID.randomUUID(), "SkyRaax"),
+				new SharedPlayerView(UUID.randomUUID(), "Builder"));
+		assertEquals(expected, ShareWire.decodePlayers(ShareWire.encodePlayers(expected)));
 	}
 
 	@Test

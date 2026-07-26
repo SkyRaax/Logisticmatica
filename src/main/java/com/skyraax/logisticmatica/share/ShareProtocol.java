@@ -2,7 +2,7 @@ package com.skyraax.logisticmatica.share;
 
 /** Wire-level constants and stable message identifiers for the sharing protocol. */
 public final class ShareProtocol {
-	public static final int VERSION = 1;
+	public static final int VERSION = 2;
 	public static final int MAX_SCHEMATIC_BYTES = 32 * 1024 * 1024;
 	public static final int MAX_ENVELOPE_BYTES = MAX_SCHEMATIC_BYTES + 1024 * 1024;
 	public static final int MAX_PROJECTS_PER_PLAYER = 256;
@@ -11,14 +11,18 @@ public final class ShareProtocol {
 	public static final int MAX_CONTAINERS_GLOBAL = 2048;
 	public static final int MAX_ITEM_TYPES_PER_CONTAINER = 256;
 	public static final int MAX_SUBSTITUTIONS_PER_PROJECT = 16_384;
+	public static final int MAX_ONLINE_PLAYERS = 1_024;
 
 	public static final int FEATURE_SCHEMATIC_TRANSFER = 1 << 0;
 	public static final int FEATURE_LIVE_PLACEMENT = 1 << 1;
 	public static final int FEATURE_PERMISSIONS = 1 << 2;
 	public static final int FEATURE_SUBSTITUTIONS = 1 << 3;
 	public static final int FEATURE_SERVER_CONTAINERS = 1 << 4;
+	public static final int FEATURE_PROJECT_DIRECTORY = 1 << 5;
+	public static final int FEATURE_PUBLIC_ACCESS = 1 << 6;
 	public static final int FEATURES = FEATURE_SCHEMATIC_TRANSFER | FEATURE_LIVE_PLACEMENT
-			| FEATURE_PERMISSIONS | FEATURE_SUBSTITUTIONS | FEATURE_SERVER_CONTAINERS;
+			| FEATURE_PERMISSIONS | FEATURE_SUBSTITUTIONS | FEATURE_SERVER_CONTAINERS
+			| FEATURE_PROJECT_DIRECTORY | FEATURE_PUBLIC_ACCESS;
 
 	private ShareProtocol() {
 	}
@@ -38,7 +42,11 @@ public final class ShareProtocol {
 		DELETE_PROJECT,
 		LEAVE_PROJECT,
 		TOGGLE_CONTAINER,
-		REFRESH_CONTAINER;
+		REFRESH_CONTAINER,
+		LIST_PLAYERS,
+		SET_PUBLIC_ACCESS,
+		REQUEST_ACCESS,
+		RESPOND_ACCESS;
 
 		public static ServerboundAction byId(int id) {
 			ServerboundAction[] values = values();
@@ -56,7 +64,8 @@ public final class ShareProtocol {
 		PROJECT_CHANGED,
 		PROJECT_REMOVED,
 		NOTICE,
-		ERROR;
+		ERROR,
+		PLAYERS;
 
 		public static ClientboundEvent byId(int id) {
 			ClientboundEvent[] values = values();

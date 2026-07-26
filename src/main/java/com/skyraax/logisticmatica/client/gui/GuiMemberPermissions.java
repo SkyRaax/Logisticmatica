@@ -42,14 +42,35 @@ public class GuiMemberPermissions extends GuiBase implements SharingRefreshable 
 		this.title = StringUtils.translate("logisticmatica.gui.title.member_permissions", member.playerName());
 		int x = 12;
 		int y = 30;
+		for (int preset : new int[] { SharePermission.VIEWER, SharePermission.BUILDER,
+				SharePermission.EDITOR, SharePermission.MANAGER }) {
+			ButtonGeneric role = new ButtonGeneric(x, y, -1, 20, WidgetSharedProjectEntry.role(preset));
+			role.setHoverStrings(GuiPlayerPicker.roleDescriptionKey(preset));
+			this.addButton(role, new PresetListener(preset, this));
+			x += role.getWidth() + 4;
+		}
+		ButtonGeneric help = new ButtonGeneric(x, y, -1, 20,
+				StringUtils.translate("logisticmatica.gui.share.explain_roles"));
+		this.addButton(help, (button, mouseButton) -> {
+			GuiSharingHelp screen = new GuiSharingHelp();
+			screen.setParent(this);
+			GuiBase.openGui(screen);
+		});
+		y += 28;
+		x = 12;
 		for (SharePermission permission : SharePermission.values()) {
 			String name = StringUtils.translate("logisticmatica.gui.share.permission."
 					+ permission.name().toLowerCase(Locale.ROOT));
+			String descriptionKey = "logisticmatica.gui.share.permission."
+					+ permission.name().toLowerCase(Locale.ROOT) + ".description";
 			String state = StringUtils.translate(permission.isIn(this.permissions)
 					? "logisticmatica.gui.share.permission.on" : "logisticmatica.gui.share.permission.off");
 			ButtonGeneric toggle = new ButtonGeneric(x, y, 230, 20, name + ": " + state);
 			toggle.setEnabled(permission != SharePermission.VIEW);
+			toggle.setHoverStrings(descriptionKey);
 			this.addButton(toggle, new Listener(permission, this));
+			String description = StringUtils.translate(descriptionKey);
+			this.addLabel(250, y + 5, this.getStringWidth(description), 12, 0xFFAAAAAA, description);
 			y += 23;
 		}
 
@@ -75,6 +96,14 @@ public class GuiMemberPermissions extends GuiBase implements SharingRefreshable 
 		if (project == null) return null;
 		for (SharedMemberView member : project.members()) if (member.playerId().equals(id)) return member;
 		return null;
+	}
+
+	private record PresetListener(int permissions, GuiMemberPermissions gui)
+			implements IButtonActionListener {
+		@Override public void actionPerformedWithButton(ButtonBase button, int mouseButton) {
+			this.gui.permissions = this.permissions;
+			this.gui.initGui();
+		}
 	}
 
 	private record Listener(SharePermission permission, GuiMemberPermissions gui)
