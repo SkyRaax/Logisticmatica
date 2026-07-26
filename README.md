@@ -11,19 +11,19 @@ placement sharing with live sync and granular permissions.
 
 > **Status: early development (0.1.x).** Nothing here is release-ready yet; see the roadmap.
 
-## Features (roadmap)
+## Features
 
-- [ ] **Better material list & configurable HUD** — the *full* list (not just the first 10
+- [x] **Better material list & configurable HUD** — the *full* list (not just the first 10
       entries), searchable, sortable and filterable, plus a HUD you can position, scale and style.
-- [ ] **Container tracking** — mark containers so their contents count towards the list,
+- [x] **Container tracking** — mark containers so their contents count towards the list,
       with wall-penetrating highlights and a content preview in the world.
-- [ ] **Material substitution** — persistently swap a material in a placement (e.g. a door
+- [x] **Material substitution** — persistently swap a material in a placement (e.g. a door
       wood type) for one you actually have, editable straight from the material list.
-- [ ] **Placement sharing & live sync** *(server component)* — share a placement, invite
+- [x] **Placement sharing & live sync** *(server component)* — share a placement, invite
       teammates, and have your moves/rotations reflected on their client in real time.
-- [ ] **Granular permissions** *(server component)* — decide exactly who may view, move,
+- [x] **Granular permissions** *(server component)* — decide exactly who may view, move,
       edit, substitute or re-invite on each of your placements.
-- [ ] **Persistence** — everything is saved per world/server; set it up once.
+- [x] **Persistence** — everything is saved per world/server; set it up once.
 
 ## Requirements
 
@@ -38,6 +38,22 @@ placement sharing with live sync and granular permissions.
 
 - A Fabric server running Logisticmatica. The server side has **no** dependency on
   Litematica, so it runs on any vanilla-Fabric dedicated server.
+
+## Sharing workflow
+
+1. Install the same Logisticmatica jar on the Fabric server and every participating client.
+2. Select a saved placement in Litematica, open **Logisticmatica > Sharing**, and choose
+   **Share Selected Placement**.
+3. Open the shared project to invite an online player and choose a role. Invitations must be
+   accepted before the schematic can be downloaded.
+4. Member capabilities can be edited individually: view/download, move, replace the schematic,
+   edit substitutions, manage containers, invite, manage permissions, and delete.
+5. Moving, rotating or mirroring a shared placement is broadcast live. Marked containers belonging
+   to it are read by the server and their item counts are kept in sync for all permitted clients.
+
+The server stores authority data inside the world at `data/logisticmatica/`; clients keep verified,
+server-specific schematic downloads under `config/logisticmatica/shared/`. See
+[`docs/sharing-protocol.md`](docs/sharing-protocol.md) for protocol and security details.
 
 ## Building from source
 

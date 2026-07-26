@@ -27,6 +27,8 @@ import fi.dy.masa.malilib.util.StringUtils;
 import fi.dy.masa.malilib.util.data.ItemType;
 import fi.dy.masa.malilib.util.data.json.JsonUtils;
 
+import fi.dy.masa.litematica.schematic.LitematicaSchematic;
+
 import com.skyraax.logisticmatica.Logisticmatica;
 
 /**
@@ -54,6 +56,8 @@ public class ContainerTracker {
 	private final Map<BlockPos, String> keyByPos = new HashMap<>();
 	/** Insertion-ordered content cache; marked positions are never evicted. */
 	private final Map<BlockPos, Object2IntOpenHashMap<ItemType>> contents = new LinkedHashMap<>();
+	/** Authoritative bindings injected from the sharing server; never persisted in the client file. */
+	private final Set<BlockPos> serverBindings = new LinkedHashSet<>();
 
 	private ContainerTracker() {
 	}
@@ -114,6 +118,38 @@ public class ContainerTracker {
 		this.markedBySchematic.clear();
 		this.keyByPos.clear();
 		this.contents.clear();
+		this.serverBindings.clear();
+	}
+
+	/** Removes the previous server snapshot before applying a fresh one. */
+	public void clearServerBindings() {
+		for (BlockPos pos : this.serverBindings) {
+			String key = this.keyByPos.remove(pos);
+			LinkedHashSet<BlockPos> positions = key != null ? this.markedBySchematic.get(key) : null;
+			if (positions != null) {
+				positions.remove(pos);
+				if (positions.isEmpty()) this.markedBySchematic.remove(key);
+			}
+			this.contents.remove(pos);
+		}
+		this.serverBindings.clear();
+	}
+
+	/** Adds one server-owned binding and its vanilla item-id snapshot. */
+	public void setServerBinding(LitematicaSchematic schematic, BlockPos pos, Map<String, Integer> items) {
+		BlockPos immutable = pos.immutable();
+		if (this.keyByPos.containsKey(immutable) && !this.serverBindings.contains(immutable)) return;
+		String key = SchematicKey.of(schematic);
+		this.markedBySchematic.computeIfAbsent(key, ignored -> new LinkedHashSet<>()).add(immutable);
+		this.keyByPos.put(immutable, key);
+		this.serverBindings.add(immutable);
+
+		Object2IntOpenHashMap<ItemType> snapshot = new Object2IntOpenHashMap<>();
+		for (Map.Entry<String, Integer> item : items.entrySet()) {
+			ItemType type = itemTypeOf(item.getKey());
+			if (type != null && item.getValue() > 0) snapshot.addTo(type, item.getValue());
+		}
+		this.contents.put(immutable, snapshot);
 	}
 
 	/** Caches a container's contents, whether or not it is currently marked. */
@@ -182,6 +218,7 @@ public class ContainerTracker {
 
 				Object2IntOpenHashMap<ItemType> snapshot = this.contents.get(pos);
 				if (snapshot != null && !snapshot.isEmpty()) {
+				if (this.serverBindings.contains(pos)) continue;
 					JsonObject items = new JsonObject();
 					for (Object2IntMap.Entry<ItemType> item : snapshot.object2IntEntrySet()) {
 						items.addProperty(idOf(item.getKey()), item.getIntValue());
@@ -192,7 +229,7 @@ public class ContainerTracker {
 				array.add(entry);
 			}
 
-			root.add(schematic.getKey(), array);
+			if (!array.isEmpty()) root.add(schematic.getKey(), array);
 		}
 
 		Path file = getStorageFile();

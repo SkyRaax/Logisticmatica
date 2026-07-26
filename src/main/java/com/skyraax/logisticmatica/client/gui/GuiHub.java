@@ -43,11 +43,9 @@ public class GuiHub extends GuiBase {
 		y += 24;
 		this.addMenuButton(x, y, "substitutions", true, this::openSubstitutions);
 		y += 24;
+		this.addMenuButton(x, y, "share", true, () -> this.open(new GuiSharing()));
+		y += 24;
 		this.addMenuButton(x, y, "settings", true, () -> this.open(new GuiConfigs()));
-		y += 32;
-
-		// Placeholder for the multiplayer phase: shared schematics, live sync, permissions.
-		this.addMenuButton(x, y, "share", false, () -> { });
 
 		String back = StringUtils.translate("logisticmatica.gui.button.back");
 		ButtonGeneric backButton = new ButtonGeneric(x, this.getScreenHeight() - 26,

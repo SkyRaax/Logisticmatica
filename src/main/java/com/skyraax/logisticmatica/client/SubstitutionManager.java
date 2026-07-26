@@ -21,6 +21,7 @@ import fi.dy.masa.litematica.schematic.LitematicaSchematic;
 import fi.dy.masa.litematica.schematic.container.LitematicaBlockStateContainer;
 
 import com.skyraax.logisticmatica.Logisticmatica;
+import com.skyraax.logisticmatica.client.share.ClientShareManager;
 
 /**
  * Owns the material substitutions the player has defined and pushes them onto the schematic
@@ -63,11 +64,31 @@ public class SubstitutionManager {
 		return map != null && !map.isEmpty();
 	}
 
+	/** A defensive snapshot used by the sharing protocol. */
+	public Map<Block, Block> getAll(LitematicaSchematic schematic) {
+		Map<Block, Block> map = this.substitutions.get(key(schematic));
+		return map == null ? Map.of() : Map.copyOf(map);
+	}
+
+	/** Replaces the complete map, primarily when applying authoritative server state. */
+	public void replaceAll(LitematicaSchematic schematic, Map<Block, Block> replacements) {
+		Map<Block, Block> current = this.substitutions.get(key(schematic));
+		if (replacements.equals(current != null ? current : Map.of())) return;
+		if (replacements.isEmpty()) {
+			this.substitutions.remove(key(schematic));
+		} else {
+			this.substitutions.put(key(schematic), new LinkedHashMap<>(replacements));
+		}
+		this.apply(schematic);
+		this.save();
+	}
+
 	/** Removes every substitution for this schematic. */
 	public void clearAll(LitematicaSchematic schematic) {
 		if (this.substitutions.remove(key(schematic)) != null) {
 			this.apply(schematic);
 			this.save();
+			ClientShareManager.getInstance().onLocalSubstitutionsChanged(schematic);
 		}
 	}
 
@@ -88,6 +109,7 @@ public class SubstitutionManager {
 
 		this.apply(schematic);
 		this.save();
+		ClientShareManager.getInstance().onLocalSubstitutionsChanged(schematic);
 	}
 
 	/** Pushes the current substitution map onto the schematic's containers and refreshes everything downstream. */

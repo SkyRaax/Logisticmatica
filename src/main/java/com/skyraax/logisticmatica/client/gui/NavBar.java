@@ -32,7 +32,7 @@ public final class NavBar {
 	public static final int HEIGHT = 18;
 
 	public enum Tab {
-		MENU, MATERIALS, FOCUS, CONTAINERS, SUBSTITUTIONS, SETTINGS
+		MENU, MATERIALS, FOCUS, CONTAINERS, SUBSTITUTIONS, SHARING, SETTINGS
 	}
 
 	private NavBar() {
@@ -83,6 +83,7 @@ public final class NavBar {
 					}
 				}
 				case SETTINGS -> openChild(new GuiConfigs(), this.hub);
+				case SHARING -> openChild(new GuiSharing(), this.hub);
 			}
 		}
 	}
