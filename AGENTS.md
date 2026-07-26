@@ -1,5 +1,5 @@
 # Logisticmatica – Agent Handoff
-> Stand: 2026-07-26 · Version: `0.1.0-dev` · Commit: `00893d6` · Branch: `main` · erstellt für KI-Agents
+> Stand: 2026-07-26 · Version: `0.1.0-dev` · Commit: `0111455` · Branch: `main` · erstellt für KI-Agents
 >
 > Sprache dieses Dokuments: Englisch (die restliche Projektdoku – README, Code-Kommentare, Commits – ist ebenfalls Englisch).
 
@@ -27,9 +27,9 @@ Logisticmatica is a **Fabric mod for Minecraft 26.2** and an add-on to **Litemat
 | Central hub menu + Litematica-menu button | ✅ done, user-tested |
 | Container↔schematic binding, colour-coding, per-schematic persistence (with contents) | ✅ done, user-tested (contents survive rejoin ✓; colour-coded per schematic ✓) |
 | In-world label = projected 2D icon+text panel, name-tag-style scaling | ✅ built; scaling reworked to be perspective/FOV/zoom-correct (awaiting final confirm) |
-| **Phase 3/4 — server component (sharing, permissions, live sync)** | ✅ implemented; automated tests + dedicated-server load smoke pass, real two-client manual test pending |
+| **Phase 3/4 — server component (sharing, permissions, live sync)** | ✅ protocol v2 implemented with public directory/access requests; automated tests + dedicated-server load smoke pass, real two-client manual test pending |
 | Deploy / release | ❌ no Modrinth release yet; version is `0.1.0-dev` |
-| Automated tests | ✅ 5 JUnit tests for wire bounds/round-trip, roles, pending-invite privacy and revision behavior |
+| Automated tests | ✅ 11 JUnit tests for wire bounds/round-trip, roles/public ACL, request privacy/persistence and revision behavior |
 
 ## 4. Tech-Stack & Abhängigkeiten
 - **Language/Runtime:** Java **25** (toolchain + `--release 25`), UTF-8.
@@ -57,10 +57,10 @@ Client subsystems (all registered from `client/LogisticmaticaInitHandler`):
 
 
 Sharing subsystems:
-- **Wire layer** (`share/*`) — protocol v1, versioned large-payload envelopes, bounded binary codec and immutable per-player views; no client-only imports.
-- **Server authority** (`server/*`) — world-local atomic persistence, SHA-256-addressed and vanilla-NBT-validated schematics, project revisions, ACL/invites, rotating container scans and broadcasts.
-- **Client bridge** (`client/share/ClientShareManager`) — handshake, verified cache per server UUID, Litematica placement mapping, echo-guarded live transforms/substitutions and shared-container projection.
-- **Sharing UI** (`client/gui/GuiSharing`, `GuiSharedProjectDetails`, `GuiMemberPermissions`) — project list, invitations, role presets, individual capabilities, member removal, leave/delete and upload/download actions.
+- **Wire layer** (`share/*`) — protocol v2, versioned large-payload envelopes, bounded binary codec and privacy-filtered per-player views; no client-only imports.
+- **Server authority** (`server/*`) — world-local atomic persistence, SHA-256-addressed and vanilla-NBT-validated schematics, project revisions, invites/access requests, public ACL modes, rotating container scans and broadcasts.
+- **Client bridge** (`client/share/ClientShareManager`) — server-presence handshake/warning, verified cache per server UUID, Litematica placement mapping, echo-guarded live transforms/substitutions and shared-container projection.
+- **Sharing UI** (`client/gui/GuiSharing`, `GuiSharedProjectDetails`, `GuiMemberPermissions`, `GuiPlacementPicker`, `GuiPlayerPicker`, `GuiSharingHelp`) — searchable server directory and placement/player pickers, access requests/public modes, explained roles/capabilities, safe schematic replacement and member administration.
 ## 6. Verzeichnis- & Datei-Landkarte
 | Pfad | Zweck |
 |---|---|
@@ -81,12 +81,12 @@ Sharing subsystems:
 | `client/SubstitutionManager.java` | Substitution overlay engine + persistence |
 | `mixin/litematica/*` | The five Litematica hooks (all `remap=false`) |
 | `client/gui/*` | All screens/widgets (hub, lists, pickers, substitutions) |
-| `src/main/java/.../client/` | 56 client classes (renderers, callbacks, state, helpers and sharing UI/bridge) |
+| `src/main/java/.../client/` | 59 client classes (renderers, callbacks, state, helpers and sharing UI/bridge) |
 | `share/*` | Side-neutral protocol constants, payload codecs, permission flags and immutable wire views |
 | `server/*` | Dedicated-server-safe authority, persistence, schematic validation and vanilla container reads |
 | `client/share/ClientShareManager.java` | Maps authoritative projects to Litematica placements and applies live state |
 | `docs/sharing-protocol.md` | Protocol, storage, ACL, limits and security documentation |
-| `src/test/java/.../{share,server}/` | Five pure JUnit protocol/model tests |
+| `src/test/java/.../{share,server}/` | Eleven pure JUnit protocol/model tests across three test classes |
 ## 7. Einrichten · Bauen · Starten · Testen · Deployen
 Prerequisite: **JDK 25** on `PATH`. On Windows use `gradlew.bat` (Git Bash: `./gradlew`).
 ```bash
@@ -114,7 +114,7 @@ Prerequisite: **JDK 25** on `PATH`. On Windows use `gradlew.bat` (Git Bash: `./g
 - **Litematica + MaLiLib** (client, LGPL-3.0) — the schematic engine we extend. Consumed as compiled artifacts from `masa.dy.fi/maven/sakura-ryoko`; source clones (`litematica-ref`, `malilib-ref`, `syncmatica-ref`) were used during development for API discovery.
 - **Mod Menu** (optional) — config screen entry.
 - **fabric-permissions-api** (bundled) — active backend for the `logisticmatica.admin` node, with operator fallback.
-- **Sharing protocol v1:** custom bounded client↔server payloads over `fabric-networking-api-v1`, informed by **Syncmatica** (CC0); see `docs/sharing-protocol.md`.
+- **Sharing protocol v2:** custom bounded client↔server payloads over `fabric-networking-api-v1`, informed by **Syncmatica** (CC0); includes a public project directory, public ACL presets, access requests and online-player discovery; see `docs/sharing-protocol.md`.
 
 ## 10. Domänen-Glossar & Kernkonzepte
 - **Schematic / Placement** — Litematica concepts. A *schematic* is loaded block data; a *placement* positions it in the world. A schematic can have multiple placements.
@@ -154,6 +154,7 @@ Prerequisite: **JDK 25** on `PATH`. On Windows use `gradlew.bat` (Git Bash: `./g
 ## 13. Kürzlich erledigt
 | Datum | Commit | Änderung |
 |---|---|---|
+| 2026-07-26 | `0111455` | Add protocol v2 project directory/public ACL/access requests, placement and player pickers, safe schematic replacement, in-game permission help and persisted-container key migration |
 | 2026-07-26 | `00893d6` | Implement protocol v1, schematic transfer, live placement/substitution sync, granular ACL/invites, server containers, sharing UI, tests and docs |
 | 2026-07-14 | `e633a91` | Name-tag-style panel scaling; menu hotkey suppressed after a chord |
 | 2026-07-14 | `554e73f` | Bind tracked containers to a schematic; colour-code + persist (with contents) |
@@ -172,9 +173,9 @@ Prerequisite: **JDK 25** on `PATH`. On Windows use `gradlew.bat` (Git Bash: `./g
 - **Litematica-menu button has no icon** — `ButtonGeneric` needs an `IGuiIcon`; our `icon.png` is 128×128 and MaLiLib's `drawTexturedRect` assumes a 256 texture, so it needs a pose-scaled draw + an `Identifier`. Deferred.
 - **`Configs.Colors.CONTAINER_HIGHLIGHT` is now dead** — box colour is per-schematic; the option still exists but is unused. Consider removing/repurposing.
 - **`hudMaxLines`, `RENDER_IN_GUIS`, etc.** are wired; a few config toggles are lightly tested.
-- **Automated coverage is intentionally narrow:** five tests cover pure protocol/model code; Litematica events, screens, networking between two processes and rendering still require manual game testing.
+- **Automated coverage is intentionally narrow:** eleven tests cover pure protocol/model code; Litematica events, screens, networking between two processes and rendering still require manual game testing.
 - **Old global container marks are dropped on load** by the new schematic-grouped format (intended, no crash).
-- **Sharing needs a real two-client end-to-end pass.** Build, tests and dedicated-server class loading pass, but upload/invite/accept/download/live-move/container sync have not yet been exercised on the maintainer's real server.
+- **Sharing needs a real two-client end-to-end pass.** Build, tests and protocol-v2 dedicated-server class loading pass, but the project directory, invites/access requests, public ACL modes, replacement/download, live movement and container sync have not yet been exercised together on the maintainer's real server.
 - **Invitations currently require the target player to be online.** Offline profile lookup is not implemented.
 - **Unreferenced schematic blobs are not garbage-collected.** Project deletion removes metadata but retains content-addressed `.litematic` files for safe recovery/deduplication.
 
@@ -184,7 +185,7 @@ Priorisiert. Each is concrete enough to start immediately.
 1. **(polish) Fix the label 1-frame jitter.** File: `client/ContainerLabelRenderer`. Add `mixin/AccessorLevelRenderer` (`@Accessor("levelRenderState") LevelRenderState`) to `logisticmatica.mixin.json`, and in `onExtractGuiOverlayPost` read `((AccessorLevelRenderer)(Object) mc.levelRenderer).…getLevelRenderState().cameraRenderState` for current-frame `viewRotationMatrix`/`projectionMatrix`/`pos`; drop the `onRenderWorldLast` capture. **Accept:** panel stays glued to the container during fast flight, no jitter. ❓ confirm with the maintainer whether jitter still occurs after `e633a91` before building this.
 2. **(polish) Show the schematic per row in the container overview.** File: `client/gui/WidgetContainerEntry` (the `Snapshot` already carries `schematicKey`); add the schematic name + `SchematicColors.argb(key)` swatch to each row. **Accept:** each overview row shows which schematic it belongs to.
 3. **(polish) Litematica-menu button icon** (see §14). File: `mixin/litematica/MixinGuiMainMenu` + a new `IGuiIcon` impl using `Identifier.fromNamespaceAndPath("logisticmatica","icon.png")` and a pose-scaled `RenderUtils.drawTexturedRect`. **Accept:** the button shows the mod icon like Litematica's own buttons.
-4. **(highest priority) Real multiplayer acceptance test.** Install commit `00893d6` on the maintainer's Fabric 26.2 server and two clients. Verify handshake; create/upload; invite/accept/decline; download + SHA cache; live move/rotate/mirror in both directions; viewer lock/denials; granular permission changes/removal/leave/delete; shared substitutions; container bind/unbind and changing contents. Inspect both `latest.log` files and `<world>/data/logisticmatica/`. **Accept:** every flow works across reconnect and server restart without client-only classes on the server.
+4. **(highest priority) Real multiplayer acceptance test.** Install commit `0111455` on the maintainer's Fabric 26.2 server and two clients. Verify installed/missing-server notices; create via placement picker; directory visibility/privacy; invite/search/accept/decline; access request/approve/decline; all four public modes; download + SHA cache; replace schematic while preserving transform/ACL/containers; live move/rotate/mirror in both directions; viewer lock/denials; granular permission changes/removal/leave/delete; shared substitutions; container restore/bind/unbind and changing contents. Inspect both `latest.log` files and `<world>/data/logisticmatica/`. **Accept:** every flow works across reconnect and server restart without client-only classes on the server.
 5. **(follow-up) Offline invitations.** Resolve cached profiles safely instead of requiring the invitee online; retain UUID identity and avoid blocking network lookups on the server thread.
 6. **(follow-up) Safe blob garbage collection.** Add an explicit/admin maintenance path that removes only SHA blobs unreferenced by every project, preferably with a recovery grace period.
 7. **(nice-to-have) Chest-tracker "where is item X" search** already consumes shared server snapshots; verify it in the two-client pass and improve dimension/project filtering if needed.
@@ -197,8 +198,8 @@ Priorisiert. Each is concrete enough to start immediately.
   ```
   On Windows the reliable exit check is: `./gradlew.bat build --console=plain -q; echo $LASTEXITCODE` → `0`. Do **not** pipe `2>&1 | Select-String` on gradle (it corrupts the exit code).
 - **CI:** every push to `main` runs `.github/workflows/build.yml` (JDK 25). Keep it green.
-- **Automated tests:** `./gradlew test` runs five JUnit tests for the bounded wire codec, permission presets, invitation privacy and revision behavior.
-- **Dedicated-server smoke:** `./gradlew runServer --args=nogui` must list Logisticmatica without Litematica/MaLiLib and log `sharing protocol v1 registered`; a fresh local run then stops at the unaccepted Minecraft EULA.
+- **Automated tests:** `./gradlew test` runs eleven JUnit tests for the bounded wire codec, permission/public-access presets, directory/request privacy, request persistence and revision behavior.
+- **Dedicated-server smoke:** `./gradlew runServer --args=nogui` must list Logisticmatica without Litematica/MaLiLib and log `sharing protocol v2 registered`; a fresh local run then stops at the unaccepted Minecraft EULA.
 - **Manual verification:** build the jar, install it on a MC **26.2** Fabric server plus two clients with Litematica + MaLiLib, and exercise the checklist in §15. For mixins, failures are usually visible in `latest.log` (Litematica mixins are `required:false`, so they warn instead of crash).
 - After a nontrivial change: `git status` clean except your files; commit as the maintainer (no AI trailer).
 
