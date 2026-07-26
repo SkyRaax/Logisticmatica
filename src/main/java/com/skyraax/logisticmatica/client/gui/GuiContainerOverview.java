@@ -11,6 +11,8 @@ import fi.dy.masa.malilib.gui.wrappers.TextFieldType;
 import fi.dy.masa.malilib.util.StringUtils;
 
 import com.skyraax.logisticmatica.client.ContainerTracker;
+import com.skyraax.logisticmatica.client.FocusState;
+import com.skyraax.logisticmatica.client.SchematicKey;
 import com.skyraax.logisticmatica.client.gui.ContainerData.Snapshot;
 
 /**
@@ -20,6 +22,9 @@ import com.skyraax.logisticmatica.client.gui.ContainerData.Snapshot;
  * opens that container's full contents.
  */
 public class GuiContainerOverview extends GuiListBase<Snapshot, WidgetContainerEntry, WidgetListContainerOverview> {
+	private String filterText = "";
+	private boolean focusedOnly;
+
 	public GuiContainerOverview() {
 		super(10, 66); // leave room for the navigation tab row + control row
 
@@ -28,8 +33,15 @@ public class GuiContainerOverview extends GuiListBase<Snapshot, WidgetContainerE
 	}
 
 	private void updateTitle() {
-		int marked = ContainerTracker.getInstance().allMarked().size();
-		this.title = StringUtils.translate("logisticmatica.gui.title.container_overview", marked);
+		ContainerTracker tracker = ContainerTracker.getInstance();
+		if (this.focusedOnly && FocusState.getSchematic() != null) {
+			String key = SchematicKey.of(FocusState.getSchematic());
+			this.title = StringUtils.translate("logisticmatica.gui.title.container_overview_focused",
+					tracker.markedFor(key).size(), SchematicKey.displayName(key));
+		} else {
+			this.title = StringUtils.translate("logisticmatica.gui.title.container_overview",
+					tracker.allMarked().size());
+		}
 	}
 
 	@Override
@@ -44,7 +56,11 @@ public class GuiContainerOverview extends GuiListBase<Snapshot, WidgetContainerE
 
 	@Override
 	protected WidgetListContainerOverview createListWidget(int listX, int listY) {
-		return new WidgetListContainerOverview(listX, listY, this.getBrowserWidth(), this.getBrowserHeight(), this);
+		WidgetListContainerOverview list = new WidgetListContainerOverview(
+				listX, listY, this.getBrowserWidth(), this.getBrowserHeight(), this);
+		list.setFilterText(this.filterText);
+		list.setFocusedOnly(this.focusedOnly);
+		return list;
 	}
 
 	@Override
@@ -69,6 +85,13 @@ public class GuiContainerOverview extends GuiListBase<Snapshot, WidgetContainerE
 		ButtonGeneric refresh = new ButtonGeneric(x, y, -1, 20,
 				StringUtils.translate("logisticmatica.gui.button.material_list.refresh"));
 		this.addButton(refresh, new ButtonListener(ButtonListener.Type.REFRESH, this));
+		x += refresh.getWidth() + 6;
+		String scopeKey = this.focusedOnly ? "logisticmatica.gui.button.container.show_all"
+				: "logisticmatica.gui.button.container.show_focused";
+		ButtonGeneric scope = new ButtonGeneric(x, y, -1, 20, StringUtils.translate(scopeKey));
+		scope.setEnabled(FocusState.getSchematic() != null);
+		this.addButton(scope, new ButtonListener(ButtonListener.Type.SCOPE, this));
+
 
 		String backLabel = StringUtils.translate("logisticmatica.gui.button.back");
 		int backWidth = this.getStringWidth(backLabel) + 20;
@@ -82,6 +105,7 @@ public class GuiContainerOverview extends GuiListBase<Snapshot, WidgetContainerE
 		public boolean onTextChange(GuiTextFieldGeneric textField) {
 			WidgetListContainerOverview listWidget = this.gui.getListWidget();
 
+			this.gui.filterText = textField.getValueWrapper();
 			if (listWidget != null) {
 				listWidget.setFilterText(textField.getValueWrapper());
 				listWidget.refreshEntries();
@@ -95,6 +119,7 @@ public class GuiContainerOverview extends GuiListBase<Snapshot, WidgetContainerE
 	private record ButtonListener(Type type, GuiContainerOverview gui) implements IButtonActionListener {
 		private enum Type {
 			REFRESH,
+			SCOPE,
 			BACK
 		}
 
@@ -109,8 +134,13 @@ public class GuiContainerOverview extends GuiListBase<Snapshot, WidgetContainerE
 						listWidget.refreshEntries();
 					}
 				}
+				case SCOPE -> {
+					this.gui.focusedOnly = !this.gui.focusedOnly;
+					this.gui.updateTitle();
+					this.gui.initGui();
+				}
 				case BACK -> GuiBase.openGui(this.gui.getParent());
 			}
 		}
+		}
 	}
-}

@@ -13,6 +13,8 @@ import fi.dy.masa.malilib.render.RenderUtils;
 import fi.dy.masa.malilib.util.StringUtils;
 
 import com.skyraax.logisticmatica.client.config.Configs;
+import com.skyraax.logisticmatica.client.SchematicColors;
+import com.skyraax.logisticmatica.client.SchematicKey;
 import com.skyraax.logisticmatica.client.gui.ContainerData.ItemCount;
 import com.skyraax.logisticmatica.client.gui.ContainerData.Snapshot;
 
@@ -53,7 +55,7 @@ public class WidgetContainerEntry extends WidgetListEntryBase<Snapshot> {
 		}
 
 		int iconX = this.x + 4;
-		int iconY = this.y + 7;
+		int iconY = this.y + 11;
 
 		if (!this.snapshot.items().isEmpty()) {
 			RenderUtils.drawRect(ctx, iconX, iconY, 16, 16, 0x20FFFFFF);
@@ -63,18 +65,33 @@ public class WidgetContainerEntry extends WidgetListEntryBase<Snapshot> {
 		int textX = iconX + 22;
 		BlockPos pos = this.snapshot.pos();
 		String coords = pos.getX() + ", " + pos.getY() + ", " + pos.getZ();
-
-		// Top line: coordinates on the left, total item count right-aligned.
-		this.drawString(ctx, textX, this.y + 4, Configs.Colors.TEXT.getIntegerValue(), coords);
-
 		String total = StringUtils.translate("logisticmatica.gui.label.container.items", this.snapshot.totalItems());
 		int totalX = this.x + this.width - this.getStringWidth(total) - 6;
+		String schematicKey = this.snapshot.schematicKey();
+		String schematicName = schematicKey != null ? SchematicKey.displayName(schematicKey)
+				: StringUtils.translate("logisticmatica.gui.container.unassigned");
+		int schematicColor = schematicKey != null ? SchematicColors.argb(schematicKey) : 0xFFAAAAAA;
+		int coordsWidth = this.getStringWidth(coords);
+		int schematicMaxWidth = Math.max(48, totalX - textX - coordsWidth - 22);
+		String shownSchematic = this.ellipsize(schematicName, schematicMaxWidth);
+		RenderUtils.drawRect(ctx, textX, this.y + 5, 4, 9, schematicColor);
+		this.drawString(ctx, textX + 8, this.y + 4, schematicColor, shownSchematic);
+		int coordsX = textX + 14 + this.getStringWidth(shownSchematic);
+		this.drawString(ctx, coordsX, this.y + 4, Configs.Colors.TEXT.getIntegerValue(), coords);
 		this.drawString(ctx, totalX, this.y + 4, Configs.Colors.HEADER.getIntegerValue(), total);
 
 		// Bottom line: distance from the player, then a summary of the most-plentiful items.
-		this.drawString(ctx, textX, this.y + 16, 0xFFAAAAAA, this.distanceAndSummary(pos));
+		this.drawString(ctx, textX, this.y + 22, 0xFFAAAAAA, this.distanceAndSummary(pos));
 
 		super.render(ctx, mouseX, mouseY, selected);
+	}
+
+	private String ellipsize(String value, int maximumWidth) {
+		if (this.getStringWidth(value) <= maximumWidth) return value;
+		String suffix = "...";
+		int end = value.length();
+		while (end > 1 && this.getStringWidth(value.substring(0, end) + suffix) > maximumWidth) end--;
+		return value.substring(0, end) + suffix;
 	}
 
 	private String distanceAndSummary(BlockPos pos) {

@@ -131,6 +131,21 @@ public final class ShareWire {
 			}
 		}
 
+		public void writeContainers(List<SharedContainerView> containers) throws IOException {
+			this.writeCount(containers.size(), ShareProtocol.MAX_CONTAINERS_PER_PROJECT);
+			for (SharedContainerView container : containers) {
+				this.writeString(container.dimension());
+				this.writeInt(container.x());
+				this.writeInt(container.y());
+				this.writeInt(container.z());
+				this.writeCount(container.items().size(), ShareProtocol.MAX_ITEM_TYPES_PER_CONTAINER);
+				for (Map.Entry<String, Integer> item : container.items().entrySet()) {
+					this.writeString(item.getKey());
+					this.writeInt(item.getValue());
+				}
+			}
+		}
+
 		private void writeCount(int count, int maximum) throws IOException {
 			if (count < 0 || count > maximum) {
 				throw new IOException("Collection count " + count + " exceeds " + maximum);
@@ -168,18 +183,7 @@ public final class ShareWire {
 			}
 
 			this.writeStringMap(project.substitutions(), ShareProtocol.MAX_SUBSTITUTIONS_PER_PROJECT);
-			this.writeCount(project.containers().size(), ShareProtocol.MAX_CONTAINERS_PER_PROJECT);
-			for (SharedContainerView container : project.containers()) {
-				this.writeString(container.dimension());
-				this.writeInt(container.x());
-				this.writeInt(container.y());
-				this.writeInt(container.z());
-				this.writeCount(container.items().size(), ShareProtocol.MAX_ITEM_TYPES_PER_CONTAINER);
-				for (Map.Entry<String, Integer> item : container.items().entrySet()) {
-					this.writeString(item.getKey());
-					this.writeInt(item.getValue());
-				}
-			}
+			this.writeContainers(project.containers());
 		}
 	}
 
@@ -233,6 +237,24 @@ public final class ShareWire {
 			return values;
 		}
 
+		public List<SharedContainerView> readContainers() throws IOException {
+			int containerCount = this.readCount(ShareProtocol.MAX_CONTAINERS_PER_PROJECT);
+			List<SharedContainerView> containers = new ArrayList<>(containerCount);
+			for (int i = 0; i < containerCount; i++) {
+				String dimension = this.readString();
+				int x = this.readInt();
+				int y = this.readInt();
+				int z = this.readInt();
+				int itemCount = this.readCount(ShareProtocol.MAX_ITEM_TYPES_PER_CONTAINER);
+				Map<String, Integer> items = new LinkedHashMap<>();
+				for (int j = 0; j < itemCount; j++) {
+					items.put(this.readString(), this.readInt());
+				}
+				containers.add(new SharedContainerView(dimension, x, y, z, items));
+			}
+			return containers;
+		}
+
 		public int readCount(int maximum) throws IOException {
 			int count = this.input.readInt();
 			if (count < 0 || count > maximum) {
@@ -275,20 +297,7 @@ public final class ShareWire {
 			}
 
 			Map<String, String> substitutions = this.readStringMap(ShareProtocol.MAX_SUBSTITUTIONS_PER_PROJECT);
-			int containerCount = this.readCount(ShareProtocol.MAX_CONTAINERS_PER_PROJECT);
-			List<SharedContainerView> containers = new ArrayList<>(containerCount);
-			for (int i = 0; i < containerCount; i++) {
-				String containerDimension = this.readString();
-				int containerX = this.readInt();
-				int containerY = this.readInt();
-				int containerZ = this.readInt();
-				int itemCount = this.readCount(ShareProtocol.MAX_ITEM_TYPES_PER_CONTAINER);
-				Map<String, Integer> items = new LinkedHashMap<>();
-				for (int j = 0; j < itemCount; j++) {
-					items.put(this.readString(), this.readInt());
-				}
-				containers.add(new SharedContainerView(containerDimension, containerX, containerY, containerZ, items));
-			}
+			List<SharedContainerView> containers = this.readContainers();
 
 			return new SharedProjectView(id, revision, name, ownerId, ownerName, dimension, x, y, z,
 					rotation, mirror, schematicHash, schematicSize, myPermissions, publicAccess,

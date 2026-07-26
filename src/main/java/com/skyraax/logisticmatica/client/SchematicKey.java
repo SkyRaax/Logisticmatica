@@ -59,4 +59,20 @@ public final class SchematicKey {
 
 		return map;
 	}
+
+	/** Human-readable schematic name for container overview rows and filters. */
+	public static String displayName(String key) {
+		LitematicaSchematic loaded = null;
+		for (LitematicaSchematic schematic : SchematicHolder.getInstance().getAllSchematics()) {
+			if (of(schematic).equals(key)) { loaded = schematic; break; }
+		}
+		if (loaded != null) return loaded.getMetadata().getName();
+		if (key.startsWith("name:")) return key.substring("name:".length());
+		try {
+			Path file = Path.of(key).getFileName();
+			return file != null ? file.toString() : key;
+		} catch (RuntimeException ignored) {
+			return key;
+		}
+	}
 }

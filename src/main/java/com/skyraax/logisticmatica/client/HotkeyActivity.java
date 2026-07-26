@@ -10,7 +10,7 @@ public final class HotkeyActivity {
 	/** How long after another hotkey fires the menu stays suppressed. Covers a chord tap-and-release. */
 	private static final long WINDOW_MS = 500;
 
-	private static long lastOtherHotkeyMs = Long.MIN_VALUE;
+	private static long lastOtherHotkeyMs;
 
 	private HotkeyActivity() {
 	}
@@ -22,6 +22,7 @@ public final class HotkeyActivity {
 
 	/** True if another hotkey fired within the suppression window. */
 	public static boolean recentlyActive() {
-		return System.currentTimeMillis() - lastOtherHotkeyMs < WINDOW_MS;
+		long markedAt = lastOtherHotkeyMs;
+		return markedAt > 0 && System.currentTimeMillis() - markedAt < WINDOW_MS;
 	}
 }

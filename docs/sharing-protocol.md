@@ -1,4 +1,4 @@
-# Logisticmatica sharing protocol v2
+# Logisticmatica sharing protocol v3
 
 Logisticmatica uses a server-authoritative Fabric play protocol. The server owns project membership,
 permissions, placement transforms, schematic versions, substitutions and tracked-container state.
@@ -13,7 +13,7 @@ protocol version | action/event id | request UUID | bounded binary body
 ```
 
 The payload identifiers are `logisticmatica:sharing_c2s_v1` and
-`logisticmatica:sharing_s2c_v1`. Fabric's large-payload registration is used with a 33 MiB envelope
+`logisticmatica:sharing_s2c_v1`. Fabric's large-payload registration is used with a 36 MiB envelope
 limit; a compressed schematic itself is limited to 32 MiB. Strings and collection sizes are bounded
 before allocation.
 Server state is capped at 256 projects, 256 non-owner members per project and 2,048 tracked
@@ -109,6 +109,10 @@ Replacing a schematic writes a new content-addressed blob and changes only the p
 revision; its UUID, transform, members, permissions, substitutions and containers remain intact.
 The server package imports only vanilla Minecraft, Fabric and the bundled permissions API; it has no
 Litematica or MaLiLib dependency.
+`CREATE_PROJECT` also carries the uploader's existing schematic-bound container marks. The server
+accepts only loaded real containers in the same dimension and within the normal eight-block range,
+canonicalizes double chests, rejects duplicates and limit violations, and takes a fresh vanilla
+inventory snapshot. Client-provided cached counts are never trusted; rejected marks remain local.
 
 ## Placement and container synchronization
 
@@ -116,6 +120,11 @@ A downloaded placement uses the shared project UUID as its Litematica placement 
 a stable mapping across reconnects. Remote transforms and substitutions are applied behind an echo
 guard so Litematica events do not bounce the same mutation back to the server. Placements without
 `MOVE` are locked locally, while the server still enforces the permission for every packet.
+After a successful upload, the uploader's existing placement is rebound in place to the returned
+project UUID and authoritative cache file, then focused. The focus picker suppresses the redundant
+bare-schematic row whenever a placement already represents the same schematic object. Accepted
+container marks are promoted to server-owned bindings; marks rejected by the server remain local and
+the client reports a partial migration instead of silently discarding them.
 
 For a shared schematic, the normal mark-container hotkey sends a server request instead of creating
 a private client mark. The server canonicalizes double chests, requires the player to be in the same

@@ -3,7 +3,6 @@ package com.skyraax.logisticmatica.server;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -32,6 +31,7 @@ import com.skyraax.logisticmatica.share.ShareAccess;
 import com.skyraax.logisticmatica.share.SharePermission;
 import com.skyraax.logisticmatica.share.ShareProtocol;
 import com.skyraax.logisticmatica.share.ShareWire;
+import com.skyraax.logisticmatica.share.SharedContainerView;
 import com.skyraax.logisticmatica.share.SharedPlayerView;
 import com.skyraax.logisticmatica.share.SharedProjectView;
 
@@ -145,18 +145,57 @@ public final class ShareServer {
 		int rotation = checkedOrdinal(reader.readInt(), Rotation.values().length, "rotation");
 		int mirror = checkedOrdinal(reader.readInt(), Mirror.values().length, "mirror");
 		byte[] schematic = reader.readBytes(ShareProtocol.MAX_SCHEMATIC_BYTES);
+		List<SharedContainerView> localContainers = reader.readContainers();
 		reader.requireFinished();
-		this.requireDimension(player.level().getServer(), dimension);
+		ServerLevel level = this.requireDimension(player.level().getServer(), dimension);
 
 		String hash = this.store.storeSchematic(schematic);
 		SharedProject project = new SharedProject(UUID.randomUUID(), player.getUUID(), player.getName().getString(),
 				name, dimension, x, y, z, rotation, mirror, hash, schematic.length);
+		this.importContainers(project, level, player, localContainers);
 		this.store.put(project);
 		this.store.save();
 		this.sendProjectChanged(project);
 		this.sendProject(player, project, payload.requestId());
 		this.sendNotice(player, payload.requestId(), "logisticmatica.share.notice.created");
 	}
+
+	/**
+	 * Promotes local marks during project creation. Only marks that satisfy the normal server-side
+	 * range and container checks are accepted; submitted item caches are never trusted.
+	 */
+	private void importContainers(SharedProject project, ServerLevel level, ServerPlayer player,
+			List<SharedContainerView> containers) {
+		for (SharedContainerView imported : containers) {
+			if (!project.dimension().equals(imported.dimension())
+					|| player.level() != level
+					|| project.containers().size() >= ShareProtocol.MAX_CONTAINERS_PER_PROJECT
+					|| this.totalContainerCount() + project.containers().size()
+							>= ShareProtocol.MAX_CONTAINERS_GLOBAL) {
+				continue;
+			}
+
+			BlockPos requested = new BlockPos(imported.x(), imported.y(), imported.z());
+			if (!level.hasChunkAt(requested)
+					|| player.distanceToSqr(requested.getX() + 0.5,
+							requested.getY() + 0.5, requested.getZ() + 0.5) > CONTAINER_BIND_DISTANCE_SQ) {
+				continue;
+			}
+			BlockPos pos = ServerContainerAccess.canonical(level, requested);
+			SharedProject.ContainerKey key = new SharedProject.ContainerKey(project.dimension(),
+					pos.getX(), pos.getY(), pos.getZ());
+			if (project.containers().containsKey(key)) continue;
+
+			boolean claimed = this.store.projects().stream()
+					.anyMatch(existing -> existing.containers().containsKey(key));
+			if (claimed) continue;
+
+			Map<String, Integer> snapshot = ServerContainerAccess.snapshot(level, pos);
+			if (snapshot == null || snapshot.size() > ShareProtocol.MAX_ITEM_TYPES_PER_CONTAINER) continue;
+			project.putContainer(key, snapshot);
+		}
+	}
+
 
 	private void handleDownload(ServerPlayer player, ServerboundSharePayload payload) throws IOException {
 		ShareWire.Reader reader = ShareWire.decode(payload.body());

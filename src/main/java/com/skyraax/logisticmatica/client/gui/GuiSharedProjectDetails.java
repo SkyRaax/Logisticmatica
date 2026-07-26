@@ -1,5 +1,7 @@
 package com.skyraax.logisticmatica.client.gui;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import javax.annotation.Nullable;
 
@@ -10,6 +12,8 @@ import fi.dy.masa.malilib.gui.button.ButtonBase;
 import fi.dy.masa.malilib.gui.button.ButtonGeneric;
 import fi.dy.masa.malilib.gui.button.IButtonActionListener;
 import fi.dy.masa.malilib.util.StringUtils;
+
+import fi.dy.masa.litematica.gui.GuiPlacementConfiguration;
 
 import com.skyraax.logisticmatica.client.share.ClientShareManager;
 import com.skyraax.logisticmatica.share.ShareAccess;
@@ -65,17 +69,45 @@ public class GuiSharedProjectDetails extends GuiBase implements SharingRefreshab
 					new Listener(Action.DECLINE, this, null));
 			y += 28;
 		} else if (project.can(SharePermission.VIEW)) {
-			x = this.addAction(x, y, "download", Action.DOWNLOAD, true);
-			x = this.addAction(x, y, "replace", Action.REPLACE,
-					project.can(SharePermission.UPDATE_SCHEMATIC));
+			boolean loaded = this.sharing.isLoaded(project.id());
+			boolean focused = this.sharing.isFocused(project.id());
+			boolean placementEditable = project.can(SharePermission.MOVE);
+			String loadStatus = StringUtils.translate(focused
+					? "logisticmatica.gui.share.status.focused"
+					: loaded ? "logisticmatica.gui.share.status.loaded"
+					: "logisticmatica.gui.share.status.not_loaded");
+			String editStatus = StringUtils.translate(placementEditable
+					? "logisticmatica.gui.share.status.placement_editable"
+					: "logisticmatica.gui.share.status.placement_read_only");
+			String status = StringUtils.translate("logisticmatica.gui.share.local_status", loadStatus, editStatus);
+			this.addLabel(12, y, this.getStringWidth(status), 12,
+					focused ? 0xFF55FF55 : loaded ? 0xFF55FFFF : 0xFFFFAA00, status);
+			y += 17;
+
+			x = 12;
+			if (loaded) {
+				x = this.addAction(x, y, focused ? "focused" : "focus", Action.FOCUS, !focused);
+				x = this.addAction(x, y, "open_placement", Action.OPEN_PLACEMENT, true);
+			} else {
+				x = this.addAction(x, y, "download_focus", Action.DOWNLOAD_FOCUS, true);
+			}
 			this.addAction(x, y, "help", Action.HELP, true);
 			y += 24;
-			String downloadHelp = StringUtils.translate("logisticmatica.gui.share.download.description");
-			this.addLabel(16, y, this.getStringWidth(downloadHelp), 12, 0xFFAAAAAA, downloadHelp);
-			y += 13;
-			String replaceHelp = StringUtils.translate("logisticmatica.gui.share.replace.description");
-			this.addLabel(16, y, this.getStringWidth(replaceHelp), 12, 0xFFAAAAAA, replaceHelp);
-			y += 18;
+
+			x = this.addAction(12, y, "download", Action.DOWNLOAD, true);
+			this.addAction(x, y, "replace", Action.REPLACE,
+					project.can(SharePermission.UPDATE_SCHEMATIC));
+			y += 24;
+
+			int textWidth = Math.max(160, this.getScreenWidth() - 32);
+			y = this.addWrappedLabel(16, y, textWidth,
+					StringUtils.translate(placementEditable
+							? "logisticmatica.gui.share.status.placement_editable.description"
+							: "logisticmatica.gui.share.status.placement_read_only.description"));
+			y = this.addWrappedLabel(16, y, textWidth,
+					StringUtils.translate("logisticmatica.gui.share.download.description"));
+			y = this.addWrappedLabel(16, y, textWidth,
+					StringUtils.translate("logisticmatica.gui.share.replace.description"));
 		} else {
 			String unavailable = StringUtils.translate("logisticmatica.gui.share.no_project_access");
 			this.addLabel(12, y, this.getStringWidth(unavailable), 12, 0xFFFFAA00, unavailable);
@@ -190,6 +222,32 @@ public class GuiSharedProjectDetails extends GuiBase implements SharingRefreshab
 		return x + button.getWidth() + 4;
 	}
 
+	private int addWrappedLabel(int x, int y, int width, String text) {
+		for (String line : this.wrap(text, width)) {
+			this.addLabel(x, y, this.getStringWidth(line), 12, 0xFFAAAAAA, line);
+			y += 11;
+		}
+		return y + 3;
+	}
+
+	private List<String> wrap(String text, int maxWidth) {
+		List<String> lines = new ArrayList<>();
+		StringBuilder line = new StringBuilder();
+		for (String word : text.split("\\s+")) {
+			String candidate = line.isEmpty() ? word : line + " " + word;
+			if (!line.isEmpty() && this.getStringWidth(candidate) > maxWidth) {
+				lines.add(line.toString());
+				line.setLength(0);
+				line.append(word);
+			} else {
+				if (!line.isEmpty()) line.append(' ');
+				line.append(word);
+			}
+		}
+		if (!line.isEmpty()) lines.add(line.toString());
+		return lines.isEmpty() ? List.of("") : lines;
+	}
+
 	@Override public void refreshSharing() { this.initGui(); }
 
 
@@ -216,7 +274,7 @@ public class GuiSharedProjectDetails extends GuiBase implements SharingRefreshab
 	}
 
 	private enum Action {
-		DOWNLOAD, REPLACE, HELP, ACCEPT, DECLINE, PUBLIC_ACCESS,
+		DOWNLOAD_FOCUS, FOCUS, OPEN_PLACEMENT, DOWNLOAD, REPLACE, HELP, ACCEPT, DECLINE, PUBLIC_ACCESS,
 		REQUEST_ROLE, REQUEST_ACCESS, CANCEL_REQUEST, CHOOSE_PLAYER,
 		MEMBER_ROLE, APPROVE_ACCESS, DECLINE_ACCESS, REMOVE_MEMBER, DELETE, LEAVE, BACK
 	}
@@ -225,6 +283,16 @@ public class GuiSharedProjectDetails extends GuiBase implements SharingRefreshab
 			implements IButtonActionListener {
 		@Override public void actionPerformedWithButton(ButtonBase button, int mouseButton) {
 			switch (this.action) {
+				case DOWNLOAD_FOCUS -> this.gui.sharing.downloadAndFocus(this.gui.projectId);
+				case FOCUS -> this.gui.sharing.focusProject(this.gui.projectId);
+				case OPEN_PLACEMENT -> {
+					var placement = this.gui.sharing.placement(this.gui.projectId);
+					if (placement != null) {
+						GuiPlacementConfiguration placementGui = new GuiPlacementConfiguration(placement);
+						placementGui.setParent(this.gui);
+						GuiBase.openGui(placementGui);
+					}
+				}
 				case DOWNLOAD -> this.gui.sharing.download(this.gui.projectId);
 				case REPLACE -> {
 					GuiPlacementPicker picker = new GuiPlacementPicker(

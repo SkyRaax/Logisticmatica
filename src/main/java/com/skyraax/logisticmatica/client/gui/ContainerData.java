@@ -46,9 +46,8 @@ public final class ContainerData {
 		for (BlockPos pos : tracker.allMarked()) {
 			Object2IntOpenHashMap<ItemType> contents = tracker.getContents(pos);
 
-			if (contents != null && !contents.isEmpty()) {
-				out.add(toSnapshot(pos, tracker.schematicKeyOf(pos), contents));
-			}
+			if (contents == null) contents = new Object2IntOpenHashMap<>();
+			out.add(toSnapshot(pos, tracker.schematicKeyOf(pos), contents));
 		}
 
 		out.sort(Comparator.comparingDouble(snapshot -> distanceSq(snapshot.pos(), eye)));

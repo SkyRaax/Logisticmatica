@@ -10,6 +10,8 @@ import fi.dy.masa.malilib.gui.GuiBase;
 import fi.dy.masa.malilib.gui.widgets.WidgetListBase;
 
 import com.skyraax.logisticmatica.client.gui.ContainerData.ItemCount;
+import com.skyraax.logisticmatica.client.FocusState;
+import com.skyraax.logisticmatica.client.SchematicKey;
 import com.skyraax.logisticmatica.client.gui.ContainerData.Snapshot;
 
 /**
@@ -20,12 +22,13 @@ import com.skyraax.logisticmatica.client.gui.ContainerData.Snapshot;
 public class WidgetListContainerOverview extends WidgetListBase<Snapshot, WidgetContainerEntry> {
 	private final GuiContainerOverview gui;
 	private String filterText = "";
+	private boolean focusedOnly;
 
 	public WidgetListContainerOverview(int x, int y, int width, int height, GuiContainerOverview parent) {
 		super(x, y, width, height, null);
 
 		this.gui = parent;
-		this.browserEntryHeight = 30;
+		this.browserEntryHeight = 38;
 	}
 
 	public void setFilterText(String text) {
@@ -36,6 +39,10 @@ public class WidgetListContainerOverview extends WidgetListBase<Snapshot, Widget
 		return this.filterText;
 	}
 
+
+	public void setFocusedOnly(boolean focusedOnly) {
+		this.focusedOnly = focusedOnly;
+	}
 	@Override
 	protected boolean hasFilter() {
 		return !this.filterText.isEmpty();
@@ -48,7 +55,12 @@ public class WidgetListContainerOverview extends WidgetListBase<Snapshot, Widget
 
 	@Override
 	protected Collection<Snapshot> getAllEntries() {
-		return ContainerData.collectMarked();
+		List<Snapshot> entries = ContainerData.collectMarked();
+		if (!this.focusedOnly || FocusState.getSchematic() == null) return entries;
+		String focusedKey = SchematicKey.of(FocusState.getSchematic());
+		return entries.stream()
+				.filter(entry -> focusedKey.equals(entry.schematicKey()))
+				.toList();
 	}
 
 	@Override
@@ -57,6 +69,9 @@ public class WidgetListContainerOverview extends WidgetListBase<Snapshot, Widget
 		strings.add((entry.pos().getX() + ", " + entry.pos().getY() + ", " + entry.pos().getZ()));
 
 		for (ItemCount item : entry.items()) {
+		if (entry.schematicKey() != null) {
+			strings.add(SchematicKey.displayName(entry.schematicKey()).toLowerCase(Locale.ROOT));
+		}
 			strings.add(item.stack().getHoverName().getString().toLowerCase(Locale.ROOT));
 		}
 

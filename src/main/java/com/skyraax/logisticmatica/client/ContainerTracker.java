@@ -90,6 +90,12 @@ public class ContainerTracker {
 		return this.markedBySchematic;
 	}
 
+	/** Defensive snapshot of the containers currently owned by one local schematic. */
+	public Set<BlockPos> markedFor(String schematicKey) {
+		Set<BlockPos> positions = this.markedBySchematic.get(schematicKey);
+		return positions != null ? Set.copyOf(positions) : Set.of();
+	}
+
 	/** Migrates bindings written with an older relative/unnormalized path to the current key. */
 	public void reconcileSchematic(LitematicaSchematic schematic) {
 		if (this.reconcileSchematicKey(schematic)) this.save();
@@ -160,11 +166,25 @@ public class ContainerTracker {
 		this.serverBindings.clear();
 	}
 
-	/** Adds one server-owned binding and its vanilla item-id snapshot. */
-	public void setServerBinding(LitematicaSchematic schematic, BlockPos pos, Map<String, Integer> items) {
+	/**
+	 * Adds one server-owned binding and its vanilla item-id snapshot.
+	 *
+	 * @return true when a matching local binding was promoted to server ownership
+	 */
+	public boolean setServerBinding(LitematicaSchematic schematic, BlockPos pos, Map<String, Integer> items) {
 		BlockPos immutable = pos.immutable();
-		if (this.keyByPos.containsKey(immutable) && !this.serverBindings.contains(immutable)) return;
 		String key = SchematicKey.of(schematic);
+		String existing = this.keyByPos.get(immutable);
+		boolean promoted = false;
+		if (existing != null && !this.serverBindings.contains(immutable)) {
+			if (!SchematicKey.refersTo(existing, schematic)) return false;
+			LinkedHashSet<BlockPos> local = this.markedBySchematic.get(existing);
+			if (local != null) {
+				local.remove(immutable);
+				if (local.isEmpty()) this.markedBySchematic.remove(existing);
+			}
+			promoted = true;
+		}
 		this.markedBySchematic.computeIfAbsent(key, ignored -> new LinkedHashSet<>()).add(immutable);
 		this.keyByPos.put(immutable, key);
 		this.serverBindings.add(immutable);
@@ -175,6 +195,7 @@ public class ContainerTracker {
 			if (type != null && item.getValue() > 0) snapshot.addTo(type, item.getValue());
 		}
 		this.contents.put(immutable, snapshot);
+		return promoted;
 	}
 
 	/** Caches a container's contents, whether or not it is currently marked. */

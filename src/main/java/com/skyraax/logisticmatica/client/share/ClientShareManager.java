@@ -7,10 +7,13 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.HexFormat;
+import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import javax.annotation.Nullable;
 
@@ -37,6 +40,10 @@ import fi.dy.masa.litematica.schematic.placement.SchematicPlacementEventHandler;
 
 import com.skyraax.logisticmatica.Logisticmatica;
 import com.skyraax.logisticmatica.client.ContainerTracker;
+import com.skyraax.logisticmatica.client.FocusController;
+import com.skyraax.logisticmatica.client.FocusState;
+import com.skyraax.logisticmatica.client.SchematicKey;
+import com.skyraax.logisticmatica.client.ISharedPlacement;
 import com.skyraax.logisticmatica.client.SubstitutionManager;
 import com.skyraax.logisticmatica.client.Substitutions;
 import com.skyraax.logisticmatica.client.gui.SharingRefreshable;
@@ -56,8 +63,9 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 	private final Map<UUID, SharedProjectView> projects = new LinkedHashMap<>();
 	private final Map<UUID, SharedPlayerView> players = new LinkedHashMap<>();
 	private final Map<UUID, SchematicPlacement> placements = new HashMap<>();
-	private final Map<UUID, SchematicPlacement> pendingCreates = new HashMap<>();
+	private final Map<UUID, PendingCreate> pendingCreates = new HashMap<>();
 	private final Map<UUID, SchematicPlacement> replacements = new HashMap<>();
+	private final Set<UUID> focusAfterDownload = new HashSet<>();
 	private boolean serverAvailable;
 	@Nullable private UUID serverId;
 	private boolean applyingRemote;
@@ -66,6 +74,9 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 	private int serverMaxBytes = ShareProtocol.MAX_SCHEMATIC_BYTES;
 
 	private ClientShareManager() {}
+
+	private record PendingCreate(SchematicPlacement placement, byte[] schematicBytes,
+			Set<BlockPos> localContainers) {}
 	public static ClientShareManager getInstance() { return INSTANCE; }
 
 	public static void register() {
@@ -90,13 +101,43 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 	}
 	@Nullable public SharedProjectView project(UUID id) { return this.projects.get(id); }
 	@Nullable public SchematicPlacement placement(UUID id) { return this.placements.get(id); }
+	public boolean isLoaded(UUID id) { return this.placements.containsKey(id); }
+	public boolean isFocused(UUID id) {
+		SchematicPlacement placement = this.placements.get(id);
+		return placement != null && FocusController.isFocused(placement);
+	}
+
+	/** Focuses an already loaded shared placement without changing its server state. */
+	public boolean focusProject(UUID id) {
+		SchematicPlacement placement = this.placements.get(id);
+		if (placement == null) return false;
+		FocusController.focusPlacement(placement);
+		this.refreshScreen();
+		return true;
+	}
+	@Nullable
+	public SharedProjectView projectFor(SchematicPlacement placement) {
+		SharedProjectView byId = this.projects.get(placement.getHashId());
+		if (byId != null) return byId;
+		for (Map.Entry<UUID, SchematicPlacement> entry : this.placements.entrySet()) {
+			if (entry.getValue() == placement) return this.projects.get(entry.getKey());
+		}
+		return null;
+	}
+
 
 	@Nullable
 	public SharedProjectView projectFor(LitematicaSchematic schematic) {
+		SchematicPlacement focused = FocusState.getPlacement();
+		if (focused != null && focused.getSchematic() == schematic) return this.projectFor(focused);
+		SharedProjectView match = null;
 		for (Map.Entry<UUID, SchematicPlacement> entry : this.placements.entrySet()) {
-			if (entry.getValue().getSchematic() == schematic) return this.projects.get(entry.getKey());
+			if (entry.getValue().getSchematic() != schematic) continue;
+			SharedProjectView candidate = this.projects.get(entry.getKey());
+			if (match != null && candidate != null && !match.id().equals(candidate.id())) return null;
+			match = candidate;
 		}
-		return null;
+		return match;
 	}
 
 	private void onJoin() {
@@ -120,6 +161,7 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 		this.placements.clear();
 		this.pendingCreates.clear();
 		this.replacements.clear();
+		this.focusAfterDownload.clear();
 		this.refreshScreen();
 	}
 
@@ -176,10 +218,26 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 		if (changed.size() != 1) throw new IOException("Expected one changed project");
 		SharedProjectView project = changed.getFirst();
 		this.projects.put(project.id(), project);
-		SchematicPlacement created = this.pendingCreates.remove(requestId);
-		if (created != null) {
-			this.replacements.put(project.id(), created);
-			this.download(project.id());
+		PendingCreate pending = this.pendingCreates.remove(requestId);
+		if (pending != null) {
+			Path file = this.sharedDirectory().resolve(project.id() + "-" + project.schematicHash() + ".litematic");
+			try {
+				Files.createDirectories(file.getParent());
+				Files.write(file, pending.schematicBytes());
+				SchematicPlacement created = pending.placement();
+				if (!(created instanceof ISharedPlacement shared)) {
+					throw new IllegalStateException("SchematicPlacement sharing mixin is unavailable");
+				}
+				shared.logisticmatica$bindToProject(project.id(), file);
+				this.placements.put(project.id(), created);
+				FocusController.focusPlacement(created);
+			} catch (IOException | RuntimeException e) {
+				Logisticmatica.LOGGER.error("[{}] Could not preserve the newly shared placement",
+						Logisticmatica.MOD_NAME, e);
+				this.replacements.put(project.id(), pending.placement());
+				this.focusAfterDownload.add(project.id());
+				this.download(project.id());
+			}
 		}
 		SchematicPlacement placement = this.placements.get(project.id());
 		if (placement != null) {
@@ -198,6 +256,20 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 			}
 		}
 		this.syncContainers();
+		if (pending != null && !pending.localContainers().isEmpty()) {
+			long migrated = pending.localContainers().stream().filter(pos -> project.containers().stream()
+					.anyMatch(container -> container.dimension().equals(project.dimension())
+							&& container.x() == pos.getX() && container.y() == pos.getY()
+							&& container.z() == pos.getZ())).count();
+			if (migrated == pending.localContainers().size()) {
+				InfoUtils.showGuiOrInGameMessage(MessageType.SUCCESS,
+						"logisticmatica.share.notice.containers_migrated", migrated);
+			} else {
+				InfoUtils.showGuiOrInGameMessage(MessageType.WARNING,
+						"logisticmatica.share.notice.containers_migrated_partial",
+						migrated, pending.localContainers().size());
+			}
+		}
 	}
 
 	private void handleProjectData(byte[] body) throws IOException {
@@ -227,6 +299,7 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 		SchematicPlacement old = this.replacements.remove(id);
 		if (old == null) old = this.placements.remove(id);
 		if (old != null) {
+			if (FocusController.isFocused(old)) this.focusAfterDownload.add(id);
 			this.applyingRemote = true;
 			try { DataManager.getSchematicPlacementManager().removeSchematicPlacement(old); }
 			finally { this.applyingRemote = false; }
@@ -239,6 +312,7 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 		UUID id = r.readUuid();
 		r.requireFinished();
 		this.projects.remove(id);
+		this.focusAfterDownload.remove(id);
 		SchematicPlacement placement = this.placements.remove(id);
 		if (placement != null) {
 			this.applyingRemote = true;
@@ -301,7 +375,7 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 			return;
 		}
 		SchematicPlacement placement = SchematicPlacement.createFor(schematic,
-				new BlockPos(project.x(), project.y(), project.z()), project.name(), true, false, project.id());
+				new BlockPos(project.x(), project.y(), project.z()), project.name(), true, true, project.id());
 		this.applyingRemote = true;
 		try {
 			placement.setRotation(Rotation.values()[project.rotation()], null);
@@ -312,6 +386,9 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 			this.applySubstitutions(project, schematic);
 		} finally {
 			this.applyingRemote = false;
+		}
+		if (this.focusAfterDownload.remove(project.id())) {
+			FocusController.focusPlacement(placement);
 		}
 		this.syncContainers();
 	}
@@ -351,6 +428,14 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 		if (this.requireServer()) this.sendProjectId(ShareProtocol.ServerboundAction.DOWNLOAD_PROJECT, projectId);
 	}
 
+	/** Downloads the authoritative version when necessary and focuses it as soon as it is loadable. */
+	public void downloadAndFocus(UUID projectId) {
+		SharedProjectView project = this.projects.get(projectId);
+		if (project == null || !project.can(SharePermission.VIEW) || this.focusProject(projectId)) return;
+		this.focusAfterDownload.add(projectId);
+		this.download(projectId);
+	}
+
 	public List<SchematicPlacement> availablePlacements() {
 		return List.copyOf(DataManager.getSchematicPlacementManager().getAllSchematicsPlacements());
 	}
@@ -379,24 +464,47 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 			}
 			Minecraft mc = Minecraft.getInstance();
 			if (mc.level == null) return;
-			BlockPos origin = placement.getOrigin();
-			byte[] body = ShareWire.encode(w -> {
-				w.writeString(placement.getName());
-				w.writeString(mc.level.dimension().identifier().toString());
-				w.writeInt(origin.getX());
-				w.writeInt(origin.getY());
-				w.writeInt(origin.getZ());
-				w.writeInt(placement.getRotation().ordinal());
-				w.writeInt(placement.getMirror().ordinal());
-				w.writeBytes(schematic, ShareProtocol.MAX_SCHEMATIC_BYTES);
-			});
+			String dimension = mc.level.dimension().identifier().toString();
+			ContainerTracker tracker = ContainerTracker.getInstance();
+			tracker.reconcileSchematic(placement.getSchematic());
+			Set<BlockPos> localContainers = new LinkedHashSet<>();
+			for (BlockPos pos : tracker.markedFor(SchematicKey.of(placement.getSchematic()))) {
+				if (localContainers.size() >= ShareProtocol.MAX_CONTAINERS_PER_PROJECT) break;
+				localContainers.add(pos);
+			}
+			List<SharedContainerView> transfers = localContainers.stream()
+					.map(pos -> new SharedContainerView(dimension, pos.getX(), pos.getY(), pos.getZ(), Map.of()))
+					.toList();
+			byte[] body = encodeCreate(placement, dimension, schematic, transfers);
+			if (body.length > ShareProtocol.MAX_ENVELOPE_BYTES) {
+				InfoUtils.showGuiOrInGameMessage(MessageType.ERROR,
+						"logisticmatica.share.error.project_payload_too_large");
+				return;
+			}
 			ServerboundSharePayload payload = ServerboundSharePayload.of(ShareProtocol.ServerboundAction.CREATE_PROJECT, body);
-			this.pendingCreates.put(payload.requestId(), placement);
+			this.pendingCreates.put(payload.requestId(),
+					new PendingCreate(placement, schematic, localContainers));
 			this.send(payload);
-		} catch (IOException e) {
+		} catch (IOException | RuntimeException e) {
 			Logisticmatica.LOGGER.error("[{}] Could not read schematic for sharing", Logisticmatica.MOD_NAME, e);
 			InfoUtils.showGuiOrInGameMessage(MessageType.ERROR, "logisticmatica.share.error.read_schematic");
 		}
+	}
+
+	private static byte[] encodeCreate(SchematicPlacement placement, String dimension, byte[] schematic,
+			List<SharedContainerView> containers) {
+		BlockPos origin = placement.getOrigin();
+		return ShareWire.encode(w -> {
+			w.writeString(placement.getName());
+			w.writeString(dimension);
+			w.writeInt(origin.getX());
+			w.writeInt(origin.getY());
+			w.writeInt(origin.getZ());
+			w.writeInt(placement.getRotation().ordinal());
+			w.writeInt(placement.getMirror().ordinal());
+			w.writeBytes(schematic, ShareProtocol.MAX_SCHEMATIC_BYTES);
+			w.writeContainers(containers);
+		});
 	}
 
 	public void uploadCurrentSchematic(UUID projectId) {
@@ -507,8 +615,9 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 	public void leave(UUID projectId) { this.sendProjectId(ShareProtocol.ServerboundAction.LEAVE_PROJECT, projectId); }
 
 	/** Returns true when the schematic is shared, even when the mutation is denied locally. */
-	public boolean toggleContainerFor(LitematicaSchematic schematic, BlockPos pos) {
-		SharedProjectView project = this.projectFor(schematic);
+	public boolean toggleContainerFor(@Nullable SchematicPlacement focusedPlacement,
+			LitematicaSchematic schematic, BlockPos pos) {
+		SharedProjectView project = focusedPlacement != null ? this.projectFor(focusedPlacement) : this.projectFor(schematic);
 		if (project == null) return false;
 		if (!project.can(SharePermission.MANAGE_CONTAINERS)) {
 			InfoUtils.showGuiOrInGameMessage(MessageType.ERROR, "logisticmatica.share.error.permissions");
@@ -516,6 +625,10 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 		}
 		Minecraft mc = Minecraft.getInstance();
 		if (mc.level == null) return true;
+		if (!ClientPlayNetworking.canSend(ServerboundSharePayload.TYPE)) {
+			InfoUtils.showGuiOrInGameMessage(MessageType.ERROR, "logisticmatica.share.error.no_server");
+			return true;
+		}
 		byte[] body = ShareWire.encode(w -> {
 			w.writeUuid(project.id());
 			w.writeString(mc.level.dimension().identifier().toString());
@@ -524,6 +637,8 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 			w.writeInt(pos.getZ());
 		});
 		this.send(ServerboundSharePayload.of(ShareProtocol.ServerboundAction.TOGGLE_CONTAINER, body));
+		InfoUtils.showGuiOrInGameMessage(MessageType.INFO,
+				"logisticmatica.share.notice.container_syncing");
 		return true;
 	}
 
@@ -556,16 +671,18 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 		String dimension = mc.level.dimension().identifier().toString();
 		ContainerTracker tracker = ContainerTracker.getInstance();
 		tracker.clearServerBindings();
+		boolean promoted = false;
 		for (SharedProjectView project : this.projects.values()) {
 			SchematicPlacement placement = this.placements.get(project.id());
 			if (placement == null || !project.dimension().equals(dimension)) continue;
 			for (SharedContainerView container : project.containers()) {
 				if (container.dimension().equals(dimension)) {
-					tracker.setServerBinding(placement.getSchematic(),
+					promoted |= tracker.setServerBinding(placement.getSchematic(),
 							new BlockPos(container.x(), container.y(), container.z()), container.items());
 				}
 			}
 		}
+		if (promoted) tracker.save();
 	}
 
 	/** Reconciles cached shared placements after a world or dimension transition. */
@@ -583,6 +700,7 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 
 	@Override
 	public void onPlacementRemoved(SchematicPlacement placement) {
+		if (FocusState.getPlacement() == placement) FocusController.clear();
 		this.placements.remove(placement.getHashId(), placement);
 	}
 

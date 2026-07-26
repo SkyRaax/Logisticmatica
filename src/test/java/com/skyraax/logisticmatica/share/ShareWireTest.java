@@ -29,6 +29,17 @@ class ShareWireTest {
 	}
 
 	@Test
+	void containerImportsRoundTripWithCachedContents() throws IOException {
+		List<SharedContainerView> expected = List.of(
+				new SharedContainerView("minecraft:overworld", 1, 64, -2,
+						Map.of("minecraft:stone", 64, "minecraft:redstone", 12)));
+		ShareWire.Reader reader = ShareWire.decode(ShareWire.encode(writer -> writer.writeContainers(expected)));
+
+		assertEquals(expected, reader.readContainers());
+		reader.requireFinished();
+	}
+
+	@Test
 	void onlinePlayersRoundTripWithStableIds() throws IOException {
 		List<SharedPlayerView> expected = List.of(
 				new SharedPlayerView(UUID.randomUUID(), "SkyRaax"),

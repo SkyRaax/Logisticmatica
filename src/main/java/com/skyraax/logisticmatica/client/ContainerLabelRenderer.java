@@ -93,7 +93,7 @@ public class ContainerLabelRenderer implements IRenderer {
 		boolean seeThrough = Configs.Hud.LABEL_SEE_THROUGH.getBooleanValue();
 		int scaledW = GuiUtils.getScaledWindowWidth();
 		int scaledH = GuiUtils.getScaledWindowHeight();
-		Vec3 eye = mc.player.position();
+		Vec3 eye = this.cameraPos;
 
 		Map<String, LitematicaSchematic> loaded = SchematicKey.loadedByKey();
 		int shown = 0;
@@ -111,8 +111,7 @@ public class ContainerLabelRenderer implements IRenderer {
 
 			double wy = pos.getY() + ANCHOR_HEIGHT;
 			float[] screen = this.project(pos.getX() + 0.5, wy, pos.getZ() + 0.5, scaledW, scaledH);
-			float[] screenUp = this.project(pos.getX() + 0.5, wy + 1.0, pos.getZ() + 0.5, scaledW, scaledH);
-			if (screen == null || screenUp == null) {
+			if (screen == null) {
 				continue;
 			}
 
@@ -120,9 +119,13 @@ public class ContainerLabelRenderer implements IRenderer {
 				continue;
 			}
 
-			// The screen span of one world block at this depth drives the scale, so the panel behaves
-			// like a name tag: it tracks perspective, FOV and zoom exactly, as if fixed to the container.
-			float unitPixels = Math.abs(screen[1] - screenUp[1]);
+			// Derive the apparent size from camera distance and the active projection. Projecting a
+			// vertical second point becomes singular when looking steeply up or down, which made labels
+			// explode near the top and bottom screen edges. Distance keeps the size direction-independent,
+			// while projectionMatrix.m11 still honours FOV and zoom.
+			float distance = (float) Math.sqrt(distanceSq(pos, eye));
+			float unitPixels = Math.abs(this.projMatrix.m11()) * scaledH * 0.5f
+					/ Math.max(0.25f, distance);
 			float scale = Math.max(0.02f, unitPixels * PANEL_WORLD_SCALE);
 
 			drawPanel(ctx, font, screen[0], screen[1], snapshot, scale,

@@ -9,6 +9,7 @@ import fi.dy.masa.malilib.render.GuiContext;
 import fi.dy.masa.malilib.render.RenderUtils;
 import fi.dy.masa.malilib.util.StringUtils;
 
+import com.skyraax.logisticmatica.client.share.ClientShareManager;
 import com.skyraax.logisticmatica.share.SharePermission;
 import com.skyraax.logisticmatica.share.SharedProjectView;
 
@@ -42,6 +43,16 @@ public class WidgetSharedProjectEntry extends WidgetListEntryBase<SharedProjectV
 									? StringUtils.translate("logisticmatica.gui.share.public_role",
 											role(this.project.myPermissions()))
 									: StringUtils.translate("logisticmatica.gui.share.request_access");
+			if (!this.project.pendingInvite() && !this.project.accessRequested()
+					&& this.project.can(SharePermission.VIEW)) {
+				ClientShareManager sharing = ClientShareManager.getInstance();
+				String local = StringUtils.translate(sharing.isFocused(this.project.id())
+						? "logisticmatica.gui.share.status.focused"
+						: sharing.isLoaded(this.project.id())
+								? "logisticmatica.gui.share.status.loaded"
+								: "logisticmatica.gui.share.status.not_loaded");
+				status = StringUtils.translate("logisticmatica.gui.share.list_status", local, status);
+			}
 			this.drawString(ctx, this.x + 6, this.y + 5, 0xFFFFFFFF, this.project.name());
 			String detail = StringUtils.translate("logisticmatica.gui.share.project_detail",
 					this.project.ownerName(), this.project.dimension(), this.project.x(), this.project.y(), this.project.z());

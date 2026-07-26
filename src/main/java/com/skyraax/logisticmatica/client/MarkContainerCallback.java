@@ -53,7 +53,7 @@ public class MarkContainerCallback implements IHotkeyCallback {
 
 		// Treat a double chest as one unit: toggle its canonical (representative) block.
 		BlockPos canonical = ContainerBlocks.canonical(mc.level, pos);
-		if (ClientShareManager.getInstance().toggleContainerFor(focused, canonical)) {
+		if (ClientShareManager.getInstance().toggleContainerFor(FocusState.getPlacement(), focused, canonical)) {
 			return true;
 		}
 		boolean nowMarked = ContainerTracker.getInstance().toggle(SchematicKey.of(focused), canonical);
