@@ -14,6 +14,7 @@ import com.skyraax.logisticmatica.client.ContainerTracker;
 import com.skyraax.logisticmatica.client.FocusState;
 import com.skyraax.logisticmatica.client.SchematicKey;
 import com.skyraax.logisticmatica.client.gui.ContainerData.Snapshot;
+import com.skyraax.logisticmatica.client.config.Configs;
 
 /**
  * The tracked-container overview: every marked container the mod has looked inside, searchable by
@@ -34,8 +35,8 @@ public class GuiContainerOverview extends GuiListBase<Snapshot, WidgetContainerE
 
 	private void updateTitle() {
 		ContainerTracker tracker = ContainerTracker.getInstance();
-		if (this.focusedOnly && FocusState.getSchematic() != null) {
-			String key = SchematicKey.of(FocusState.getSchematic());
+		if (this.focusedOnly && FocusState.getSchematicKey() != null) {
+			String key = FocusState.getSchematicKey();
 			this.title = StringUtils.translate("logisticmatica.gui.title.container_overview_focused",
 					tracker.markedFor(key).size(), SchematicKey.displayName(key));
 		} else {
@@ -89,9 +90,14 @@ public class GuiContainerOverview extends GuiListBase<Snapshot, WidgetContainerE
 		String scopeKey = this.focusedOnly ? "logisticmatica.gui.button.container.show_all"
 				: "logisticmatica.gui.button.container.show_focused";
 		ButtonGeneric scope = new ButtonGeneric(x, y, -1, 20, StringUtils.translate(scopeKey));
-		scope.setEnabled(FocusState.getSchematic() != null);
+		scope.setEnabled(FocusState.getSchematicKey() != null);
 		this.addButton(scope, new ButtonListener(ButtonListener.Type.SCOPE, this));
-
+		x += scope.getWidth() + 6;
+		String visualsKey = Configs.Hud.CONTAINER_VISUALS_ENABLED.getBooleanValue()
+				? "logisticmatica.gui.button.container.hide_visuals"
+				: "logisticmatica.gui.button.container.show_visuals";
+		ButtonGeneric visuals = new ButtonGeneric(x, y, -1, 20, StringUtils.translate(visualsKey));
+		this.addButton(visuals, new ButtonListener(ButtonListener.Type.VISUALS, this));
 
 		String backLabel = StringUtils.translate("logisticmatica.gui.button.back");
 		int backWidth = this.getStringWidth(backLabel) + 20;
@@ -120,6 +126,7 @@ public class GuiContainerOverview extends GuiListBase<Snapshot, WidgetContainerE
 		private enum Type {
 			REFRESH,
 			SCOPE,
+			VISUALS,
 			BACK
 		}
 
@@ -137,6 +144,12 @@ public class GuiContainerOverview extends GuiListBase<Snapshot, WidgetContainerE
 				case SCOPE -> {
 					this.gui.focusedOnly = !this.gui.focusedOnly;
 					this.gui.updateTitle();
+					this.gui.initGui();
+				}
+				case VISUALS -> {
+					Configs.Hud.CONTAINER_VISUALS_ENABLED.setBooleanValue(
+							!Configs.Hud.CONTAINER_VISUALS_ENABLED.getBooleanValue());
+					Configs.saveToFile();
 					this.gui.initGui();
 				}
 				case BACK -> GuiBase.openGui(this.gui.getParent());

@@ -13,6 +13,7 @@ import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import javax.annotation.Nullable;
@@ -35,6 +36,8 @@ import fi.dy.masa.malilib.util.InfoUtils;
 import fi.dy.masa.litematica.data.DataManager;
 import fi.dy.masa.litematica.data.SchematicHolder;
 import fi.dy.masa.litematica.interfaces.ISchematicPlacementEventListener;
+import fi.dy.masa.litematica.materials.MaterialListBase;
+import fi.dy.masa.litematica.materials.MaterialListUtils;
 import fi.dy.masa.litematica.schematic.LitematicaSchematic;
 import fi.dy.masa.litematica.schematic.placement.SchematicPlacement;
 import fi.dy.masa.litematica.schematic.placement.SchematicPlacementEventFlag;
@@ -209,6 +212,7 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 		this.snapshotPromotions.clear();
 		this.exportAfterDownload.clear();
 		this.pendingEndSharing.clear();
+		ProjectNotificationSettings.getInstance().reset();
 		this.refreshScreen();
 	}
 
@@ -251,6 +255,7 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 		this.serverMaxBytes = r.readInt();
 		this.serverVersion = r.readString();
 		this.serverId = r.readUuid();
+		ProjectNotificationSettings.getInstance().activateServer(this.serverId);
 		r.requireFinished();
 		if (this.serverAvailable) InfoUtils.showGuiOrInGameMessage(MessageType.SUCCESS,
 				"logisticmatica.share.notice.handshake", this.serverVersion);
@@ -299,6 +304,7 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 		this.containerRevisions.put(project.id(), snapshot.revision());
 		this.snapshotPromotions.remove(project.id());
 		tracker.save();
+		this.refreshAvailableMaterialCounts();
 		PendingContainerPromotion expected = this.pendingContainerPromotions.remove(project.id());
 		if (expected != null && expected.total() > 0) {
 			int accepted = expected.accepted();
@@ -326,24 +332,46 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 		if (project == null || mc.level == null
 				|| !project.dimension().equals(mc.level.dimension().identifier().toString())) return;
 		ContainerTracker tracker = ContainerTracker.getInstance();
+		int refreshed = 0;
+		String projectKey = ContainerTracker.projectKey(project.id());
 		for (SharedContainerKey key : delta.removals()) {
 			if (project.dimension().equals(key.dimension())) {
-				tracker.removeServerBinding(project.id(), new BlockPos(key.x(), key.y(), key.z()));
+				BlockPos pos = new BlockPos(key.x(), key.y(), key.z());
+				tracker.removeServerBinding(project.id(), pos);
 			}
 		}
 		for (SharedContainerView container : delta.upserts()) {
 			if (project.dimension().equals(container.dimension())) {
-				tracker.setServerBinding(project.id(),
-						new BlockPos(container.x(), container.y(), container.z()), container.items());
+				BlockPos pos = new BlockPos(container.x(), container.y(), container.z());
+				if (projectKey.equals(tracker.schematicKeyOf(pos))) refreshed++;
+				tracker.setServerBinding(project.id(), pos, container.items());
 			}
 		}
 		this.containerRevisions.put(project.id(), delta.revision());
+		tracker.save();
+		this.refreshAvailableMaterialCounts();
+		ProjectNotificationSettings settings = ProjectNotificationSettings.getInstance();
+
+		if (refreshed > 0
+				&& settings.isEnabled(project.id(), ProjectNotificationCategory.CONTAINER_CONTENTS)) {
+			InfoUtils.showGuiOrInGameMessage(MessageType.INFO,
+					"logisticmatica.share.activity.container_contents", project.name(), refreshed);
+		}
 	}
+
+	private void refreshAvailableMaterialCounts() {
+		Minecraft mc = Minecraft.getInstance();
+		MaterialListBase materialList = DataManager.getMaterialList();
+		if (mc.player != null && materialList != null) {
+			MaterialListUtils.updateAvailableCounts(materialList.getMaterialsAll(), mc.player);
+		}
+	}
+
 	private void handleProjectChanged(UUID requestId, byte[] body) throws IOException {
 		List<SharedProjectView> changed = ShareWire.decodeProjects(body);
 		if (changed.size() != 1) throw new IOException("Expected one changed project");
 		SharedProjectView project = changed.getFirst();
-		this.projects.put(project.id(), project);
+		SharedProjectView previous = this.projects.put(project.id(), project);
 		PendingCreate pending = this.pendingCreates.remove(requestId);
 		if (pending != null) {
 			Path file = this.sharedDirectory().resolve(project.id() + "-" + project.schematicHash() + ".litematic");
@@ -386,7 +414,45 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 			this.pendingContainerPromotions.put(project.id(),
 					new PendingContainerPromotion(pending.localContainers()));
 		}
+		if (previous != null) this.showProjectChanges(previous, project);
 		this.syncContainers();
+	}
+
+	private void showProjectChanges(SharedProjectView previous, SharedProjectView project) {
+		ProjectNotificationSettings settings = ProjectNotificationSettings.getInstance();
+		if (settings.isEnabled(project.id(), ProjectNotificationCategory.PLACEMENT)
+				&& (!previous.dimension().equals(project.dimension()) || previous.x() != project.x()
+				|| previous.y() != project.y() || previous.z() != project.z()
+				|| previous.rotation() != project.rotation() || previous.mirror() != project.mirror())) {
+			InfoUtils.showGuiOrInGameMessage(MessageType.INFO,
+					"logisticmatica.share.activity.transform", project.name(), project.dimension(),
+					project.x(), project.y(), project.z(),
+					Rotation.values()[project.rotation()].name(), Mirror.values()[project.mirror()].name());
+		}
+		if (settings.isEnabled(project.id(), ProjectNotificationCategory.SCHEMATIC)
+				&& (!previous.schematicHash().equals(project.schematicHash())
+				|| previous.schematicSize() != project.schematicSize())) {
+			InfoUtils.showGuiOrInGameMessage(MessageType.INFO,
+					"logisticmatica.share.activity.schematic", project.name(), project.schematicSize());
+		}
+		if (settings.isEnabled(project.id(), ProjectNotificationCategory.SUBSTITUTIONS)
+				&& !previous.substitutions().equals(project.substitutions())) {
+			InfoUtils.showGuiOrInGameMessage(MessageType.INFO,
+					"logisticmatica.share.activity.substitutions", project.name(), project.substitutions().size());
+		}
+		if (settings.isEnabled(project.id(), ProjectNotificationCategory.CONTAINER_MARKS)
+				&& previous.containerCount() != project.containerCount()) {
+			InfoUtils.showGuiOrInGameMessage(MessageType.INFO,
+					"logisticmatica.share.activity.container_marks", project.name(),
+					previous.containerCount(), project.containerCount());
+		}
+		if (settings.isEnabled(project.id(), ProjectNotificationCategory.ACCESS)
+				&& (previous.publicAccess() != project.publicAccess()
+				|| previous.myPermissions() != project.myPermissions()
+				|| !Objects.equals(previous.members(), project.members()))) {
+			InfoUtils.showGuiOrInGameMessage(MessageType.INFO,
+					"logisticmatica.share.activity.access", project.name());
+		}
 	}
 
 	private void handleProjectData(byte[] body) throws IOException {
@@ -454,6 +520,7 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 				Logisticmatica.LOGGER.error("[{}] Could not detach the ended server project locally",
 						Logisticmatica.MOD_NAME, e);
 				tracker.clearServerBindings(id);
+				tracker.forgetProjectVisuals(id);
 				if (focused) FocusController.focusPlacement(placement);
 				InfoUtils.showGuiOrInGameMessage(MessageType.ERROR,
 						"logisticmatica.share.error.end_sharing_local");
@@ -462,12 +529,14 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 			}
 		} else {
 			tracker.clearServerBindings(id);
+			tracker.forgetProjectVisuals(id);
 			if (placement != null) {
 				this.applyingRemote = true;
 				try { DataManager.getSchematicPlacementManager().removeSchematicPlacement(placement); }
 				finally { this.applyingRemote = false; }
 			}
 		}
+		ProjectNotificationSettings.getInstance().forget(id);
 		this.syncContainers();
 	}
 

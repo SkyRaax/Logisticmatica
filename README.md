@@ -14,9 +14,11 @@ placement sharing with live sync and granular permissions.
 ## Features
 
 - [x] **Better material list & configurable HUD** — the *full* list (not just the first 10
-      entries), searchable, sortable and filterable, plus a HUD you can position, scale and style.
+      entries), searchable, sortable and filterable, plus a HUD you can position, scale, style and
+      show or hide directly from Logisticmatica's own material screen.
 - [x] **Container tracking** — mark containers so their contents count towards the list,
-      with wall-penetrating highlights and a content preview in the world.
+      with a global visual switch, persistent per-container visibility, wall-penetrating highlights
+      and a perspective-correct content preview in the world.
 - [x] **Material substitution** — persistently swap a material in a placement (e.g. a door
       wood type) for one you actually have, editable straight from the material list.
 - [x] **Placement sharing & live sync** *(server component)* — choose any loaded placement,
@@ -60,8 +62,10 @@ placement sharing with live sync and granular permissions.
    permission administration or deletion.
 7. Moving, rotating or mirroring a shared placement is broadcast live. The active project's marked
    containers are loaded from an authoritative chunked server snapshot and then kept current through
-   live deltas. **Unfocus Project** hides Logisticmatica's list, highlights, labels and peek without
-   deleting the project or hiding unrelated Litematica placements.
+   live deltas. Project details expose local notification controls for placement, schematic,
+   substitution, container and access changes. **Unfocus Project** hides Logisticmatica's list,
+   highlights, labels and peek without deleting the project or hiding unrelated Litematica
+   placements.
 8. **End Sharing** first refreshes the owner's authoritative container snapshot, removes the server
    project for every participant, and detaches the owner's existing placement back to a local
    schematic. Its placement state and container marks remain locally usable.

@@ -3,12 +3,8 @@ package com.skyraax.logisticmatica.client;
 import java.util.List;
 import javax.annotation.Nullable;
 
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
-import com.mojang.blaze3d.pipeline.RenderTarget;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.renderer.RenderBuffers;
-import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.profiling.ProfilerFiller;
@@ -19,26 +15,24 @@ import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
 import org.joml.Matrix4f;
-import org.joml.Matrix4fc;
 import org.joml.Vector4f;
 
 import fi.dy.masa.malilib.interfaces.IRenderer;
 import fi.dy.masa.malilib.render.GuiContext;
 import fi.dy.masa.malilib.util.GuiUtils;
 
-import fi.dy.masa.litematica.schematic.LitematicaSchematic;
-
 import com.skyraax.logisticmatica.client.config.Configs;
-import com.skyraax.logisticmatica.client.gui.ContainerData;
 import com.skyraax.logisticmatica.client.config.ContainerLabelLayout;
+import com.skyraax.logisticmatica.client.gui.ContainerData;
 import com.skyraax.logisticmatica.client.gui.ContainerData.ItemCount;
 import com.skyraax.logisticmatica.client.gui.ContainerData.Snapshot;
+import com.skyraax.logisticmatica.mixin.AccessorLevelRenderer;
 
 /**
  * Draws a compact panel above each nearby marked container of the focused schematic. The panel is a
  * crisp 2D overlay positioned by projecting the container's world position to the screen — much more
  * readable than in-world text, and it lets us lay out icons next to text and wrap long lists into
- * columns. The camera matrices are captured during the world render pass and used in the GUI overlay
+ * columns. The current-frame camera matrices are read in the GUI overlay
  * pass to do the projection.
  */
 public class ContainerLabelRenderer implements IRenderer {
@@ -60,27 +54,17 @@ public class ContainerLabelRenderer implements IRenderer {
 	private final Matrix4f projMatrix = new Matrix4f();
 	private final Vector4f scratch = new Vector4f();
 	@Nullable private Vec3 cameraPos;
+	private record Projection(float x, float y, float clipW) {}
 
-	// --- World pass: capture the camera transform for this frame. ---
-	@Override
-	public void onRenderWorldLast(RenderTarget fb, Matrix4fc modelViewMatrix, CameraRenderState cameraState,
-			Frustum culling, RenderBuffers buffers, GpuBufferSlice terrainFog, org.joml.Vector4f fogColor,
-			ProfilerFiller profiler) {
-		// The camera render state carries the very matrices used to draw the world this frame.
-		this.viewMatrix.set(cameraState.viewRotationMatrix);
-		this.projMatrix.set(cameraState.projectionMatrix);
-		this.cameraPos = cameraState.pos;
-	}
-
-	// --- GUI pass: project each marked container to the screen and draw its panel. ---
+	// --- GUI pass: read the current camera state, project each container and draw its panel. ---
 	@Override
 	public void onExtractGuiOverlayPost(GuiContext ctx, float partialTicks, ProfilerFiller profiler) {
-		if (!Configs.Hud.SHOW_CONTAINER_LABELS.getBooleanValue() || this.cameraPos == null) {
+		if (!Configs.Hud.CONTAINER_VISUALS_ENABLED.getBooleanValue()
+				|| !Configs.Hud.SHOW_CONTAINER_LABELS.getBooleanValue()) {
 			return;
 		}
 
-		LitematicaSchematic schematic = FocusState.getSchematic();
-		if (ContainerTracker.getInstance().isEmpty() || schematic == null
+		if (ContainerTracker.getInstance().isEmpty() || FocusState.getSchematic() == null
 				|| GuiUtils.getCurrentScreen() != null) {
 			return;
 		}
@@ -90,6 +74,12 @@ public class ContainerLabelRenderer implements IRenderer {
 			return;
 		}
 
+		CameraRenderState cameraState = ((AccessorLevelRenderer) (Object) mc.levelRenderer)
+				.logisticmatica$getLevelRenderState().cameraRenderState;
+		this.viewMatrix.set(cameraState.viewRotationMatrix);
+		this.projMatrix.set(cameraState.projectionMatrix);
+		this.cameraPos = cameraState.pos;
+
 		Font font = mc.font;
 		boolean seeThrough = Configs.Hud.LABEL_SEE_THROUGH.getBooleanValue();
 		int scaledW = GuiUtils.getScaledWindowWidth();
@@ -98,7 +88,8 @@ public class ContainerLabelRenderer implements IRenderer {
 
 		int shown = 0;
 		for (Snapshot snapshot : ContainerData.collectMarked()) {
-			if (!FocusState.isFocusedSchematicKey(snapshot.schematicKey())) continue;
+			if (!FocusState.isFocusedSchematicKey(snapshot.schematicKey())
+					|| !ContainerTracker.getInstance().isVisualsVisible(snapshot.schematicKey(), snapshot.pos())) continue;
 
 			BlockPos pos = snapshot.pos();
 			if (distanceSq(pos, eye) > LABEL_DISTANCE_SQ) {
@@ -106,7 +97,7 @@ public class ContainerLabelRenderer implements IRenderer {
 			}
 
 			double wy = pos.getY() + ANCHOR_HEIGHT;
-			float[] screen = this.project(pos.getX() + 0.5, wy, pos.getZ() + 0.5, scaledW, scaledH);
+			Projection screen = this.project(pos.getX() + 0.5, wy, pos.getZ() + 0.5, scaledW, scaledH);
 			if (screen == null) {
 				continue;
 			}
@@ -115,17 +106,15 @@ public class ContainerLabelRenderer implements IRenderer {
 				continue;
 			}
 
-			// Derive the apparent size from camera distance and the active projection. Projecting a
-			// vertical second point becomes singular when looking steeply up or down, which made labels
-			// explode near the top and bottom screen edges. Distance keeps the size direction-independent,
-			// while projectionMatrix.m11 still honours FOV and zoom.
-			float distance = (float) Math.sqrt(distanceSq(pos, eye));
+			// Perspective size depends on camera-space depth (clip W), not Euclidean distance.
+			// This keeps a billboard's apparent geometry stable near the viewport edges and under zoom.
 			float unitPixels = Math.abs(this.projMatrix.m11()) * scaledH * 0.5f
-					/ Math.max(0.25f, distance);
+					/ Math.max(0.25f, screen.clipW());
 			float scale = Math.min(1.0f, Math.max(0.02f, unitPixels * PANEL_WORLD_SCALE));
+			String header = SchematicKey.displayName(snapshot.schematicKey());
 
-			drawPanel(ctx, font, screen[0], screen[1], scaledW, scaledH, snapshot, scale,
-					schematic.getMetadata().getName(), SchematicColors.argb(snapshot.schematicKey()));
+			drawPanel(ctx, font, screen.x(), screen.y(), snapshot, scale,
+					header, SchematicColors.argb(snapshot.schematicKey()));
 
 			if (++shown >= MAX_LABELS) {
 				break;
@@ -133,9 +122,9 @@ public class ContainerLabelRenderer implements IRenderer {
 		}
 	}
 
-	/** Projects a world position to GUI-scaled screen coords {@code [x, y]}, or null if behind the camera. */
+	/** Projects a world position and retains clip W, the perspective-correct camera depth. */
 	@Nullable
-	private float[] project(double wx, double wy, double wz, int scaledW, int scaledH) {
+	private Projection project(double wx, double wy, double wz, int scaledW, int scaledH) {
 		this.scratch.set((float) (wx - this.cameraPos.x), (float) (wy - this.cameraPos.y),
 				(float) (wz - this.cameraPos.z), 1.0f);
 		this.viewMatrix.transform(this.scratch);
@@ -147,10 +136,10 @@ public class ContainerLabelRenderer implements IRenderer {
 
 		float ndcX = this.scratch.x / this.scratch.w;
 		float ndcY = this.scratch.y / this.scratch.w;
-		return new float[] {
+		return new Projection(
 				(ndcX * 0.5f + 0.5f) * scaledW,
-				(1.0f - (ndcY * 0.5f + 0.5f)) * scaledH
-		};
+				(1.0f - (ndcY * 0.5f + 0.5f)) * scaledH,
+				this.scratch.w);
 	}
 
 	private boolean isOccluded(Minecraft mc, BlockPos pos) {
@@ -161,8 +150,7 @@ public class ContainerLabelRenderer implements IRenderer {
 				&& !ContainerBlocks.blocks(mc.level, pos).contains(hit.getBlockPos());
 	}
 
-	private static void drawPanel(GuiContext ctx, Font font, float sx, float sy, int screenWidth,
-			int screenHeight, Snapshot snapshot,
+	private static void drawPanel(GuiContext ctx, Font font, float sx, float sy, Snapshot snapshot,
 			float scale, String header, int headerColor) {
 		List<ItemCount> items = snapshot.items();
 		int shown = Math.min(Configs.Hud.LABEL_MAX_ITEMS.getIntegerValue(), items.size());
@@ -184,8 +172,9 @@ public class ContainerLabelRenderer implements IRenderer {
 
 		float scaledPanelWidth = totalW * scale;
 		float scaledPanelHeight = totalH * scale;
-		float panelLeft = clamp(sx - scaledPanelWidth / 2.0f, 2.0f, screenWidth - scaledPanelWidth - 2.0f);
-		float panelTop = clamp(sy - scaledPanelHeight, 2.0f, screenHeight - scaledPanelHeight - 2.0f);
+		// Do not clamp to the viewport: a real billboard naturally moves partially off-screen.
+		float panelLeft = sx - scaledPanelWidth / 2.0f;
+		float panelTop = sy - scaledPanelHeight;
 
 		int textColor = Configs.Colors.TEXT.getIntegerValue();
 
@@ -224,8 +213,5 @@ public class ContainerLabelRenderer implements IRenderer {
 		return dx * dx + dy * dy + dz * dz;
 	}
 
-	private static float clamp(float value, float minimum, float maximum) {
-		return maximum < minimum ? minimum : Math.max(minimum, Math.min(maximum, value));
-	}
 
 }

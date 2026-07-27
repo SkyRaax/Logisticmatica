@@ -21,6 +21,8 @@ import fi.dy.masa.litematica.materials.MaterialListUtils;
 import fi.dy.masa.litematica.schematic.LitematicaSchematic;
 
 import com.skyraax.logisticmatica.client.FocusState;
+import com.skyraax.logisticmatica.client.FocusController;
+import com.skyraax.logisticmatica.client.config.Configs;
 
 /**
  * A lean material-list screen for Logisticmatica, built on MaLiLib's list-widget framework.
@@ -102,6 +104,10 @@ public class GuiMaterialListView extends GuiListBase<MaterialListEntry, WidgetMa
 
 		// "Refresh" button (re-creates the material list from the schematic/placement/area)
 		x += this.createButton(x, y, ButtonListener.Type.REFRESH) + gap;
+
+		// Explicit master switch for Logisticmatica's own material HUD.
+		x += this.createButton(x, y, Configs.Hud.ENABLED.getBooleanValue()
+				? ButtonListener.Type.HIDE_HUD : ButtonListener.Type.SHOW_HUD) + gap;
 
 		// "Substitutions" button: edit the focused schematic's material swaps.
 		x += this.createButton(x, y, ButtonListener.Type.SUBSTITUTIONS) + gap;
@@ -191,12 +197,17 @@ public class GuiMaterialListView extends GuiListBase<MaterialListEntry, WidgetMa
 			switch (this.type)
 			{
 				case REFRESH:
-					materialList.reCreateMaterialList();
+					FocusController.refreshFocusedMaterials();
 					break;
 
 				case SUBSTITUTIONS:
 					this.parent.openSubstitutions();
 					return; // openSubstitutions swaps the screen; don't re-init this one.
+
+				case HIDE_HUD, SHOW_HUD:
+					Configs.Hud.ENABLED.setBooleanValue(!Configs.Hud.ENABLED.getBooleanValue());
+					Configs.saveToFile();
+					break;
 
 				case HIDE_COMPLETE:
 					materialList.setHideAvailable(!materialList.getHideAvailable());
@@ -222,6 +233,8 @@ public class GuiMaterialListView extends GuiListBase<MaterialListEntry, WidgetMa
 		private enum Type
 		{
 			REFRESH       ("logisticmatica.gui.button.material_list.refresh"),
+			HIDE_HUD      ("logisticmatica.gui.button.material_list.hide_hud"),
+			SHOW_HUD      ("logisticmatica.gui.button.material_list.show_hud"),
 			SUBSTITUTIONS ("logisticmatica.gui.button.substitutions"),
 			HIDE_COMPLETE ("logisticmatica.gui.button.material_list.hide_complete"),
 			BACK          ("logisticmatica.gui.button.back");

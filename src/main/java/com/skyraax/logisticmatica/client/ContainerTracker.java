@@ -50,6 +50,7 @@ import com.skyraax.logisticmatica.Logisticmatica;
 public class ContainerTracker {
 	private static final ContainerTracker INSTANCE = new ContainerTracker();
 	private static final int MAX_CACHED_CONTAINERS = 2000;
+	private static final String HIDDEN_VISUALS_KEY = "$hiddenVisuals";
 
 	/** schematic key -> the canonical positions bound to it. */
 	private final Map<String, LinkedHashSet<BlockPos>> markedBySchematic = new LinkedHashMap<>();
@@ -63,8 +64,11 @@ public class ContainerTracker {
 	private final Map<BlockPos, UUID> serverProjectByPos = new HashMap<>();
 	/** Local bindings temporarily hidden by an active server project. */
 	private final Map<UUID, Map<BlockPos, DisplacedLocalBinding>> displacedLocalBindings = new HashMap<>();
+	/** Per-project/container local presentation preferences; hidden containers still count materials. */
+	private final Set<VisualKey> hiddenVisuals = new LinkedHashSet<>();
 	private record DisplacedLocalBinding(String schematicKey,
 			@Nullable Object2IntOpenHashMap<ItemType> contents) {}
+	private record VisualKey(String schematicKey, BlockPos pos) {}
 
 
 	private ContainerTracker() {
@@ -104,6 +108,37 @@ public class ContainerTracker {
 		return positions != null ? Set.copyOf(positions) : Set.of();
 	}
 
+	/** Whether one marked container participates in world visuals; material counting is unaffected. */
+	public boolean isVisualsVisible(@Nullable String schematicKey, BlockPos pos) {
+		return schematicKey != null && !this.hiddenVisuals.contains(
+				new VisualKey(schematicKey, pos.immutable()));
+	}
+
+	/** Toggles one container's local visual presentation and persists the preference. */
+	public boolean toggleVisuals(String schematicKey, BlockPos pos) {
+		VisualKey key = new VisualKey(schematicKey, pos.immutable());
+		boolean visible;
+		if (this.hiddenVisuals.remove(key)) {
+			visible = true;
+		} else {
+			this.hiddenVisuals.add(key);
+			visible = false;
+		}
+		this.save();
+		return visible;
+	}
+
+	private void moveVisualPreference(String fromKey, String toKey, BlockPos pos) {
+		VisualKey from = new VisualKey(fromKey, pos.immutable());
+		if (this.hiddenVisuals.remove(from)) this.hiddenVisuals.add(new VisualKey(toKey, pos.immutable()));
+	}
+
+	/** Drops only local visual preferences after a remote project was actually removed. */
+	public void forgetProjectVisuals(UUID projectId) {
+		String key = projectKey(projectId);
+		if (this.hiddenVisuals.removeIf(hidden -> hidden.schematicKey().equals(key))) this.save();
+	}
+
 	/** Migrates bindings written with an older relative/unnormalized path to the current key. */
 	public void reconcileSchematic(LitematicaSchematic schematic) {
 		if (this.reconcileSchematicKey(schematic)) this.save();
@@ -119,7 +154,10 @@ public class ContainerTracker {
 			LinkedHashSet<BlockPos> positions = this.markedBySchematic.remove(stored);
 			if (positions == null) continue;
 			migrated.addAll(positions);
-			for (BlockPos pos : positions) this.keyByPos.replace(pos, stored, current);
+			for (BlockPos pos : positions) {
+				this.keyByPos.replace(pos, stored, current);
+				this.moveVisualPreference(stored, current, pos);
+			}
 			changed = true;
 		}
 
@@ -138,6 +176,7 @@ public class ContainerTracker {
 		String existing = this.keyByPos.remove(immutable);
 
 		if (existing != null) {
+			this.hiddenVisuals.remove(new VisualKey(existing, immutable));
 			LinkedHashSet<BlockPos> set = this.markedBySchematic.get(existing);
 			if (set != null) {
 				set.remove(immutable);
@@ -160,6 +199,7 @@ public class ContainerTracker {
 		this.serverBindings.clear();
 		this.serverProjectByPos.clear();
 		this.displacedLocalBindings.clear();
+		this.hiddenVisuals.clear();
 	}
 
 	/** Removes the previous server snapshot before applying a fresh one. */
@@ -197,6 +237,7 @@ public class ContainerTracker {
 				schematicKey, ignored -> new LinkedHashSet<>());
 		for (BlockPos pos : positions) {
 			if (!projectId.equals(this.serverProjectByPos.remove(pos))) continue;
+			this.moveVisualPreference(projectKey, schematicKey, pos);
 			this.keyByPos.remove(pos, projectKey);
 			if (projectPositions != null) projectPositions.remove(pos);
 			if (displaced != null) displaced.remove(pos);
@@ -228,6 +269,9 @@ public class ContainerTracker {
 			existingProject = this.serverProjectByPos.get(immutable);
 		}
 		if (existing != null && existingProject == null) {
+			if (!this.isVisualsVisible(existing, immutable)) {
+				this.hiddenVisuals.add(new VisualKey(key, immutable));
+			}
 			LinkedHashSet<BlockPos> local = this.markedBySchematic.get(existing);
 			Object2IntOpenHashMap<ItemType> current = this.contents.get(immutable);
 			Object2IntOpenHashMap<ItemType> saved = null;
@@ -266,6 +310,7 @@ public class ContainerTracker {
 				toKey, ignored -> new LinkedHashSet<>());
 		for (BlockPos pos : positions) {
 			if (fromKey.equals(this.keyByPos.get(pos))) {
+				this.moveVisualPreference(fromKey, toKey, pos);
 				this.keyByPos.put(pos, toKey);
 				target.add(pos);
 			}
@@ -288,6 +333,7 @@ public class ContainerTracker {
 			if (projectPositions.isEmpty()) this.serverBindings.remove(projectId);
 		}
 		String key = projectKey(projectId);
+		this.hiddenVisuals.remove(new VisualKey(key, immutable));
 		this.keyByPos.remove(immutable, key);
 		LinkedHashSet<BlockPos> marked = this.markedBySchematic.get(key);
 		if (marked != null) {
@@ -417,6 +463,16 @@ public class ContainerTracker {
 		}
 
 
+		if (!this.hiddenVisuals.isEmpty()) {
+			JsonArray hidden = new JsonArray();
+			for (VisualKey visual : this.hiddenVisuals) {
+				JsonObject entry = new JsonObject();
+				entry.addProperty("schematic", visual.schematicKey());
+				entry.add("pos", JsonUtils.blockPosToJson(visual.pos()));
+				hidden.add(entry);
+			}
+			root.add(HIDDEN_VISUALS_KEY, hidden);
+		}
 
 		Path file = getStorageFile();
 		FileUtils.createDirectoriesIfMissing(file.getParent());
@@ -431,8 +487,20 @@ public class ContainerTracker {
 			return;
 		}
 
-		for (Map.Entry<String, JsonElement> schematic : element.getAsJsonObject().entrySet()) {
-			if (!schematic.getValue().isJsonArray()) {
+		JsonObject root = element.getAsJsonObject();
+		if (root.has(HIDDEN_VISUALS_KEY) && root.get(HIDDEN_VISUALS_KEY).isJsonArray()) {
+			for (JsonElement raw : root.getAsJsonArray(HIDDEN_VISUALS_KEY)) {
+				if (!raw.isJsonObject()) continue;
+				JsonObject entry = raw.getAsJsonObject();
+				BlockPos pos = posFromJson(entry.get("pos"));
+				if (pos != null && entry.has("schematic")) {
+					this.hiddenVisuals.add(new VisualKey(entry.get("schematic").getAsString(), pos));
+				}
+			}
+		}
+
+		for (Map.Entry<String, JsonElement> schematic : root.entrySet()) {
+			if (schematic.getKey().equals(HIDDEN_VISUALS_KEY) || !schematic.getValue().isJsonArray()) {
 				continue;
 			}
 

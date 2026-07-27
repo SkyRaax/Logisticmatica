@@ -163,12 +163,44 @@ focus unsubscribes and removes that project's projected bindings immediately; re
 with a current snapshot.
 
 The material list, world highlights, floating content labels and look-at peek follow the explicit
-Logisticmatica focus. Clearing focus hides all of them without deleting server data; removing a
-shared placement also removes its projected server bindings locally until the placement is loaded
-again. The separate container overview screen retains its explicit All/Focused selector.
-Container labels default to one narrow vertical list that grows upward and is clamped to the screen;
-the maximum visible item rows and the former column layout remain configurable.
+Logisticmatica focus. Shared container totals use the project UUID scope, so authoritative server
+snapshots count toward the focused material list exactly like local snapshots. Clearing focus hides
+all overlays without deleting server data; removing a shared placement also removes its projected
+server bindings locally until the placement is loaded again. The separate container overview screen
+retains its explicit All/Focused selector. A global container-visual switch and a persistent toggle
+per container control labels, highlights and peek only; hidden containers remain marked, synchronized
+and included in material totals.
 
+Container labels default to one narrow vertical list that grows upward. Their screen position and
+size are derived from the current-frame camera matrices and perspective clip depth, so FOV changes,
+zoom and viewport edges behave like a billboard in 3D space. Panels are allowed to leave the viewport
+naturally instead of being clamped to its edge. The maximum visible item rows and the former column
+layout remain configurable.
+
+## Client notifications and persistence
+
+Project detail screens expose per-project notification categories for placement transforms,
+schematic replacements, substitutions, container marks, live container contents and access changes.
+Preferences are local to each client and server UUID. Server updates are compared with the previous
+authoritative view and shown as concrete translated activity messages; internal scheduler wording is
+not used by Logisticmatica's refresh action.
+
+Persistence boundaries are explicit:
+
+| State | Authority and storage |
+|---|---|
+| Material/container HUD options and hotkeys | Client `config/logisticmatica.json` |
+| Local marks, cached contents and per-container visual visibility | Client per-world `config/logisticmatica/containers_*.json` |
+| Local substitutions | Client `config/logisticmatica/substitutions.json` |
+| Active shared project and notification preferences | Client `config/logisticmatica/shared/<server-uuid>/` |
+| Shared transform, schematic hash, substitutions, ACL, requests and authoritative containers | Server `<world>/data/logisticmatica/projects.json` plus schematic blobs |
+| Blocks placed in the Minecraft world | The normal server world save, outside Logisticmatica |
+
+Moving, rotating or mirroring a shared placement, changing shared substitutions, replacing its
+schematic source and changing its project settings are persisted server-side. Editing a local
+`.litematic` file or creative-build source does not silently overwrite a shared schematic: the owner
+must deliberately use **Replace from Placement**, which keeps the project UUID, transform, ACL,
+substitutions and containers while replacing the authoritative file.
 
 ## Compatibility
 

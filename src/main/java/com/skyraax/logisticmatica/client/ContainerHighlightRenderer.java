@@ -65,7 +65,8 @@ public class ContainerHighlightRenderer implements IRenderer {
 			ProfilerFiller profiler) {
 		ContainerTracker tracker = ContainerTracker.getInstance();
 
-		if (tracker.isEmpty() || FocusState.getSchematic() == null) {
+		if (!Configs.Hud.CONTAINER_VISUALS_ENABLED.getBooleanValue()
+				|| tracker.isEmpty() || FocusState.getSchematic() == null) {
 			return;
 		}
 
@@ -86,6 +87,7 @@ public class ContainerHighlightRenderer implements IRenderer {
 			Color4f color = SchematicColors.forKey(schematic.getKey());
 
 			for (BlockPos canonical : schematic.getValue()) {
+				if (!tracker.isVisualsVisible(schematic.getKey(), canonical)) continue;
 				if (isTooFarAway(canonical, eye)) {
 					continue;
 				}

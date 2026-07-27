@@ -17,7 +17,6 @@ import fi.dy.masa.litematica.schematic.LitematicaSchematic;
 
 import com.skyraax.logisticmatica.client.ContainerTracker;
 import com.skyraax.logisticmatica.client.FocusState;
-import com.skyraax.logisticmatica.client.SchematicKey;
 
 /**
  * Folds the contents of the focused schematic's tracked containers into the material list's
@@ -37,7 +36,9 @@ public abstract class MixinMaterialListUtils {
 			return;
 		}
 
-		Object2IntOpenHashMap<ItemType> tracked = ContainerTracker.getInstance().totalContentsFor(SchematicKey.of(focused));
+		String focusedKey = FocusState.getSchematicKey();
+		if (focusedKey == null) return;
+		Object2IntOpenHashMap<ItemType> tracked = ContainerTracker.getInstance().totalContentsFor(focusedKey);
 
 		if (tracked.isEmpty()) {
 			return;

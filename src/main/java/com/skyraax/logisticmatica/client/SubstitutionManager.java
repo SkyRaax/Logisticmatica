@@ -129,8 +129,8 @@ public class SubstitutionManager {
 		DataManager.getSchematicPlacementManager().markAllPlacementsOfSchematicForRebuild(schematic);
 
 		MaterialListBase materialList = DataManager.getMaterialList();
-		if (materialList != null) {
-			materialList.reCreateMaterialList();
+		if (materialList != null && FocusState.getSchematic() == schematic) {
+			FocusController.refreshFocusedMaterials();
 		}
 	}
 

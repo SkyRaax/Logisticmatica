@@ -67,6 +67,20 @@ public final class FocusController {
 		return FocusState.getPlacement() == placement;
 	}
 
+	/** Refreshes the active list with a Logisticmatica-specific progress message. */
+	public static boolean refreshFocusedMaterials() {
+		SchematicPlacement placement = FocusState.getPlacement();
+		if (placement != null) return applyPlacement(placement);
+		LitematicaSchematic schematic = FocusState.getSchematic();
+		if (schematic == null) return false;
+		MaterialListSchematic materialList = new MaterialListSchematic(schematic, false);
+		materialList.reCreateMaterialList();
+		DataManager.setMaterialList(materialList);
+		InfoUtils.showGuiOrInGameMessage(MessageType.INFO,
+				"logisticmatica.focus.materials_refreshed", schematic.getMetadata().getName());
+		return true;
+	}
+
 	private static boolean applyPlacement(SchematicPlacement placement) {
 		cancelPendingTask();
 		MaterialListBase materialList = placement.getMaterialList();

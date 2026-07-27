@@ -5,15 +5,18 @@ import java.util.UUID;
 import javax.annotation.Nullable;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.Vec3;
 
+import fi.dy.masa.malilib.gui.GuiBase;
 import fi.dy.masa.malilib.gui.widgets.WidgetListEntryBase;
 import fi.dy.masa.malilib.render.GuiContext;
 import fi.dy.masa.malilib.render.RenderUtils;
 import fi.dy.masa.malilib.util.StringUtils;
 
 import com.skyraax.logisticmatica.client.config.Configs;
+import com.skyraax.logisticmatica.client.ContainerTracker;
 import com.skyraax.logisticmatica.client.SchematicColors;
 import com.skyraax.logisticmatica.client.SchematicKey;
 import com.skyraax.logisticmatica.client.gui.ContainerData.ItemCount;
@@ -30,13 +33,15 @@ public class WidgetContainerEntry extends WidgetListEntryBase<Snapshot> {
 	private static final int SUMMARY_ITEMS = 3;
 
 	@Nullable private final Snapshot snapshot;
+	private final GuiContainerOverview gui;
 	private final boolean isOdd;
 
 	public WidgetContainerEntry(int x, int y, int width, int height, boolean isOdd,
-			@Nullable Snapshot snapshot, int listIndex) {
+			@Nullable Snapshot snapshot, GuiContainerOverview gui, int listIndex) {
 		super(x, y, width, height, snapshot, listIndex);
 
 		this.snapshot = snapshot;
+		this.gui = gui;
 		this.isOdd = isOdd;
 	}
 
@@ -67,8 +72,13 @@ public class WidgetContainerEntry extends WidgetListEntryBase<Snapshot> {
 		BlockPos pos = this.snapshot.pos();
 		String coords = pos.getX() + ", " + pos.getY() + ", " + pos.getZ();
 		String total = StringUtils.translate("logisticmatica.gui.label.container.items", this.snapshot.totalItems());
-		int totalX = this.x + this.width - this.getStringWidth(total) - 6;
 		String schematicKey = this.snapshot.schematicKey();
+		boolean visualsVisible = ContainerTracker.getInstance().isVisualsVisible(schematicKey, pos);
+		String visualStatus = StringUtils.translate(visualsVisible
+				? "logisticmatica.gui.container.visuals.visible"
+				: "logisticmatica.gui.container.visuals.hidden");
+		int visualX = this.visibilityRegionStart(visualStatus);
+		int totalX = visualX - this.getStringWidth(total) - 12;
 		String schematicName = schematicKey != null ? SchematicKey.displayName(schematicKey)
 				: StringUtils.translate("logisticmatica.gui.container.unassigned");
 		int schematicColor = schematicKey != null ? SchematicColors.argb(schematicKey) : 0xFFAAAAAA;
@@ -80,11 +90,34 @@ public class WidgetContainerEntry extends WidgetListEntryBase<Snapshot> {
 		int coordsX = textX + 14 + this.getStringWidth(shownSchematic);
 		this.drawString(ctx, coordsX, this.y + 4, Configs.Colors.TEXT.getIntegerValue(), coords);
 		this.drawString(ctx, totalX, this.y + 4, Configs.Colors.HEADER.getIntegerValue(), total);
+		this.drawString(ctx, visualX, this.y + 4, visualsVisible ? 0xFF55FF55 : 0xFFAAAAAA, visualStatus);
 
 		// Bottom line: distance from the player, then a summary of the most-plentiful items.
 		this.drawString(ctx, textX, this.y + 22, 0xFFAAAAAA, this.distanceAndSummary(pos));
 
 		super.render(ctx, mouseX, mouseY, selected);
+	}
+
+	private int visibilityRegionStart(String label) {
+		return this.x + this.width - this.getStringWidth(label) - 8;
+	}
+
+	@Override
+	protected boolean onMouseClickedImpl(MouseButtonEvent click, boolean doubleClick) {
+		if (this.snapshot == null || this.snapshot.schematicKey() == null) return false;
+		boolean visible = ContainerTracker.getInstance().isVisualsVisible(
+				this.snapshot.schematicKey(), this.snapshot.pos());
+		String label = StringUtils.translate(visible
+				? "logisticmatica.gui.container.visuals.visible"
+				: "logisticmatica.gui.container.visuals.hidden");
+		if (click.x() >= this.visibilityRegionStart(label)) {
+			ContainerTracker.getInstance().toggleVisuals(this.snapshot.schematicKey(), this.snapshot.pos());
+		} else {
+			GuiContainerContents contents = new GuiContainerContents(this.snapshot);
+			contents.setParent(this.gui);
+			GuiBase.openGui(contents);
+		}
+		return true;
 	}
 
 	@Override

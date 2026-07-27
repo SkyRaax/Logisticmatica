@@ -6,7 +6,6 @@ import java.util.List;
 import java.util.Locale;
 import javax.annotation.Nullable;
 
-import fi.dy.masa.malilib.gui.GuiBase;
 import fi.dy.masa.malilib.gui.widgets.WidgetListBase;
 
 import com.skyraax.logisticmatica.client.gui.ContainerData.ItemCount;
@@ -56,8 +55,8 @@ public class WidgetListContainerOverview extends WidgetListBase<Snapshot, Widget
 	@Override
 	protected Collection<Snapshot> getAllEntries() {
 		List<Snapshot> entries = ContainerData.collectMarked();
-		if (!this.focusedOnly || FocusState.getSchematic() == null) return entries;
-		String focusedKey = SchematicKey.of(FocusState.getSchematic());
+		if (!this.focusedOnly || FocusState.getSchematicKey() == null) return entries;
+		String focusedKey = FocusState.getSchematicKey();
 		return entries.stream()
 				.filter(entry -> focusedKey.equals(entry.schematicKey()))
 				.toList();
@@ -80,12 +79,7 @@ public class WidgetListContainerOverview extends WidgetListBase<Snapshot, Widget
 
 	@Override
 	protected boolean onEntryClicked(@Nullable Snapshot entry, int index) {
-		if (entry != null) {
-			GuiContainerContents contents = new GuiContainerContents(entry);
-			contents.setParent(this.gui);
-			GuiBase.openGui(contents);
-		}
-
+		// The row widget distinguishes its visibility control from opening the contents screen.
 		return true;
 	}
 
@@ -93,6 +87,6 @@ public class WidgetListContainerOverview extends WidgetListBase<Snapshot, Widget
 	protected WidgetContainerEntry createListEntryWidget(int x, int y, int listIndex, boolean isOdd,
 			@Nullable Snapshot entry) {
 		return new WidgetContainerEntry(x, y, this.browserEntryWidth, this.browserEntryHeight,
-				isOdd, entry, listIndex);
+				isOdd, entry, this.gui, listIndex);
 	}
 }

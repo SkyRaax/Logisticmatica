@@ -35,7 +35,8 @@ import com.skyraax.logisticmatica.client.gui.ContainerData.Snapshot;
 public class ContainerPeekRenderer implements IRenderer {
 	@Override
 	public void onExtractGuiOverlayPost(GuiContext ctx, float partialTicks, ProfilerFiller profiler) {
-		if (!Configs.Hud.SHOW_CONTAINER_PEEK.getBooleanValue()) {
+		if (!Configs.Hud.CONTAINER_VISUALS_ENABLED.getBooleanValue()
+				|| !Configs.Hud.SHOW_CONTAINER_PEEK.getBooleanValue()) {
 			return;
 		}
 
@@ -55,7 +56,8 @@ public class ContainerPeekRenderer implements IRenderer {
 		}
 
 		Snapshot snapshot = ContainerData.snapshotOf(canonical);
-		if (snapshot == null || !FocusState.isFocusedSchematicKey(snapshot.schematicKey())
+		if (snapshot == null || !ContainerTracker.getInstance().isVisualsVisible(snapshot.schematicKey(), canonical)
+				|| !FocusState.isFocusedSchematicKey(snapshot.schematicKey())
 				|| snapshot.items().isEmpty()) {
 			return;
 		}

@@ -57,6 +57,12 @@ public final class FocusState {
 		return schematicKey != null && schematicKey.equals(FocusState.schematicKey);
 	}
 
+	/** Canonical container/material scope of the current focus, including shared project ids. */
+	@Nullable
+	public static String getSchematicKey() {
+		return schematicKey;
+	}
+
 	@Nullable
 	public static UUID getProjectId() {
 		return projectId;

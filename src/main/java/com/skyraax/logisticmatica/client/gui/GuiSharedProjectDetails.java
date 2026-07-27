@@ -91,7 +91,8 @@ public class GuiSharedProjectDetails extends GuiBase implements SharingRefreshab
 			} else {
 				x = this.addAction(x, y, "download_focus", Action.DOWNLOAD_FOCUS, true);
 			}
-			this.addAction(x, y, "help", Action.HELP, true);
+			x = this.addAction(x, y, "help", Action.HELP, true);
+			this.addAction(x, y, "notifications", Action.NOTIFICATIONS, true);
 			y += 24;
 
 			x = this.addAction(12, y, "download", Action.DOWNLOAD, true);
@@ -333,7 +334,8 @@ public class GuiSharedProjectDetails extends GuiBase implements SharingRefreshab
 	}
 
 	private enum Action {
-		DOWNLOAD_FOCUS, FOCUS, OPEN_PLACEMENT, DOWNLOAD, LOCAL_COPY, REPLACE, HELP, ACCEPT, DECLINE, PUBLIC_ACCESS,
+		DOWNLOAD_FOCUS, FOCUS, OPEN_PLACEMENT, DOWNLOAD, LOCAL_COPY, REPLACE, HELP, NOTIFICATIONS,
+		ACCEPT, DECLINE, PUBLIC_ACCESS,
 		REQUEST_ACCESS, CANCEL_REQUEST, CHOOSE_PLAYER,
 		MEMBER_ROLE, APPROVE_ACCESS, DECLINE_ACCESS, REMOVE_MEMBER, END_SHARING, LEAVE, BACK
 	}
@@ -364,6 +366,15 @@ public class GuiSharedProjectDetails extends GuiBase implements SharingRefreshab
 					GuiSharingHelp help = new GuiSharingHelp();
 					help.setParent(this.gui);
 					GuiBase.openGui(help);
+				}
+				case NOTIFICATIONS -> {
+					SharedProjectView project = this.gui.sharing.project(this.gui.projectId);
+					if (project != null) {
+						GuiProjectNotifications notifications = new GuiProjectNotifications(
+								project.id(), project.name());
+						notifications.setParent(this.gui);
+						GuiBase.openGui(notifications);
+					}
 				}
 				case ACCEPT -> this.gui.sharing.respondToInvite(this.gui.projectId, true);
 				case DECLINE -> this.gui.sharing.respondToInvite(this.gui.projectId, false);
