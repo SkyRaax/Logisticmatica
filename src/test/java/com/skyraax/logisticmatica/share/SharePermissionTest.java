@@ -19,6 +19,13 @@ class SharePermissionTest {
 	}
 
 	@Test
+	void roleHierarchyIsCumulativeFromViewerToManager() {
+		assertEquals(SharePermission.VIEWER, SharePermission.BUILDER & SharePermission.VIEWER);
+		assertEquals(SharePermission.BUILDER, SharePermission.EDITOR & SharePermission.BUILDER);
+		assertEquals(SharePermission.EDITOR, SharePermission.MANAGER & SharePermission.EDITOR);
+	}
+
+	@Test
 	void publicAccessNeverGrantsProjectAdministration() {
 		assertTrue(SharePermission.MANAGE_CONTAINERS.isIn(ShareAccess.PUBLIC_SUPPLIER.permissions()));
 		assertFalse(SharePermission.UPDATE_SCHEMATIC.isIn(ShareAccess.PUBLIC_SUPPLIER.permissions()));

@@ -135,12 +135,25 @@ public class GuiSharedProjectDetails extends GuiBase implements SharingRefreshab
 			y += 14;
 			if (project.accessRequested()) {
 				this.addAction(12, y, "cancel_request", Action.CANCEL_REQUEST, true);
+				y += 28;
 			} else {
-				x = this.addAction(12, y, "role", Action.REQUEST_ROLE, true,
-						WidgetSharedProjectEntry.role(this.requestPermissions));
-				this.addAction(x, y, "request_access", Action.REQUEST_ACCESS, true);
+				String scale = StringUtils.translate("logisticmatica.gui.share.request_role.scale", ROLES.length);
+				this.addLabel(16, y, this.getStringWidth(scale), 12, 0xFFAAAAAA, scale);
+				y += 14;
+				y = this.addRequestRoleSelector(y);
+
+				String role = WidgetSharedProjectEntry.role(this.requestPermissions);
+				String selected = StringUtils.translate("logisticmatica.gui.share.request_role.selected",
+						roleLevel(this.requestPermissions), ROLES.length, role);
+				this.addLabel(16, y, this.getStringWidth(selected), 12, 0xFF55FFFF, selected);
+				y += 14;
+				y = this.addWrappedLabel(16, y, Math.max(160, this.getScreenWidth() - 32),
+						StringUtils.translate(requestRoleSummaryKey(this.requestPermissions)));
+
+				this.addAction(12, y, "request_access", Action.REQUEST_ACCESS, true,
+						StringUtils.translate("logisticmatica.gui.share.request_access_as", role));
+				y += 28;
 			}
-			y += 28;
 		}
 
 		if (!project.pendingInvite() && project.can(SharePermission.INVITE)) {
@@ -230,6 +243,30 @@ public class GuiSharedProjectDetails extends GuiBase implements SharingRefreshab
 		return y + 3;
 	}
 
+	private int addRequestRoleSelector(int y) {
+		int x = 12;
+		int right = this.getScreenWidth() - 12;
+		for (int i = 0; i < ROLES.length; i++) {
+			int permissions = ROLES[i];
+			boolean selected = permissions == this.requestPermissions;
+			String role = WidgetSharedProjectEntry.role(permissions);
+			String label = StringUtils.translate(selected
+					? "logisticmatica.gui.share.request_role.selected_option"
+					: "logisticmatica.gui.share.request_role.option", i + 1, role);
+			ButtonGeneric button = new ButtonGeneric(x, y, -1, 20, label);
+			if (x > 12 && x + button.getWidth() > right) {
+				x = 12;
+				y += 24;
+				button = new ButtonGeneric(x, y, -1, 20, label);
+			}
+			button.setEnabled(!selected);
+			button.setHoverStrings(GuiPlayerPicker.roleDescriptionKey(permissions));
+			this.addButton(button, new RequestRoleListener(this, permissions));
+			x += button.getWidth() + 4;
+		}
+		return y + 24;
+	}
+
 	private List<String> wrap(String text, int maxWidth) {
 		List<String> lines = new ArrayList<>();
 		StringBuilder line = new StringBuilder();
@@ -251,11 +288,18 @@ public class GuiSharedProjectDetails extends GuiBase implements SharingRefreshab
 	@Override public void refreshSharing() { this.initGui(); }
 
 
-	private static int nextRole(int current) {
+	private static int roleLevel(int permissions) {
 		for (int i = 0; i < ROLES.length; i++) {
-			if (ROLES[i] == current) return ROLES[(i + 1) % ROLES.length];
+			if (ROLES[i] == permissions) return i + 1;
 		}
-		return SharePermission.VIEWER;
+		return 1;
+	}
+
+	private static String requestRoleSummaryKey(int permissions) {
+		if (permissions == SharePermission.VIEWER) return "logisticmatica.gui.share.request_role.viewer.summary";
+		if (permissions == SharePermission.EDITOR) return "logisticmatica.gui.share.request_role.editor.summary";
+		if (permissions == SharePermission.MANAGER) return "logisticmatica.gui.share.request_role.manager.summary";
+		return "logisticmatica.gui.share.request_role.builder.summary";
 	}
 
 	private static ShareAccess nextAccess(ShareAccess current) {
@@ -275,7 +319,7 @@ public class GuiSharedProjectDetails extends GuiBase implements SharingRefreshab
 
 	private enum Action {
 		DOWNLOAD_FOCUS, FOCUS, OPEN_PLACEMENT, DOWNLOAD, REPLACE, HELP, ACCEPT, DECLINE, PUBLIC_ACCESS,
-		REQUEST_ROLE, REQUEST_ACCESS, CANCEL_REQUEST, CHOOSE_PLAYER,
+		REQUEST_ACCESS, CANCEL_REQUEST, CHOOSE_PLAYER,
 		MEMBER_ROLE, APPROVE_ACCESS, DECLINE_ACCESS, REMOVE_MEMBER, DELETE, LEAVE, BACK
 	}
 
@@ -311,10 +355,6 @@ public class GuiSharedProjectDetails extends GuiBase implements SharingRefreshab
 					SharedProjectView project = this.gui.sharing.project(this.gui.projectId);
 					if (project != null) this.gui.sharing.setPublicAccess(
 							this.gui.projectId, nextAccess(project.publicAccess()));
-				}
-				case REQUEST_ROLE -> {
-					this.gui.requestPermissions = nextRole(this.gui.requestPermissions);
-					this.gui.initGui();
 				}
 				case REQUEST_ACCESS -> this.gui.sharing.requestAccess(
 						this.gui.projectId, this.gui.requestPermissions);
@@ -362,6 +402,14 @@ public class GuiSharedProjectDetails extends GuiBase implements SharingRefreshab
 				case LEAVE -> this.gui.sharing.leave(this.gui.projectId);
 				case BACK -> GuiBase.openGui(this.gui.getParent());
 			}
+		}
+	}
+
+	private record RequestRoleListener(GuiSharedProjectDetails gui, int permissions)
+			implements IButtonActionListener {
+		@Override public void actionPerformedWithButton(ButtonBase button, int mouseButton) {
+			this.gui.requestPermissions = this.permissions;
+			this.gui.initGui();
 		}
 	}
 }

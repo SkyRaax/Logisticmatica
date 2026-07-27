@@ -79,6 +79,9 @@ substitutions, non-owner member list or container contents.
 | Manager | Editor + `INVITE`, `MANAGE_PERMISSIONS` |
 | Owner | Every capability including `DELETE` |
 
+The access-request screen presents these four member presets as an ordered lowest-to-highest scale,
+shows the selected preset's cumulative capabilities, and names the requested role before submission.
+
 Every project appears in the server directory and has one public-access policy:
 
 | Public mode | Anonymous project permissions |
