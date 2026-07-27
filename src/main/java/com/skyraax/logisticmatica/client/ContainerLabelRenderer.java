@@ -1,7 +1,6 @@
 package com.skyraax.logisticmatica.client;
 
 import java.util.List;
-import java.util.Map;
 import javax.annotation.Nullable;
 
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
@@ -35,7 +34,7 @@ import com.skyraax.logisticmatica.client.gui.ContainerData.ItemCount;
 import com.skyraax.logisticmatica.client.gui.ContainerData.Snapshot;
 
 /**
- * Draws a compact panel of item icons + counts above each nearby marked container. The panel is a
+ * Draws a compact panel above each nearby marked container of the focused schematic. The panel is a
  * crisp 2D overlay positioned by projecting the container's world position to the screen — much more
  * readable than in-world text, and it lets us lay out icons next to text and wrap long lists into
  * columns. The camera matrices are captured during the world render pass and used in the GUI overlay
@@ -80,7 +79,9 @@ public class ContainerLabelRenderer implements IRenderer {
 			return;
 		}
 
-		if (ContainerTracker.getInstance().isEmpty() || GuiUtils.getCurrentScreen() != null) {
+		LitematicaSchematic schematic = FocusState.getSchematic();
+		if (ContainerTracker.getInstance().isEmpty() || schematic == null
+				|| GuiUtils.getCurrentScreen() != null) {
 			return;
 		}
 
@@ -95,14 +96,9 @@ public class ContainerLabelRenderer implements IRenderer {
 		int scaledH = GuiUtils.getScaledWindowHeight();
 		Vec3 eye = this.cameraPos;
 
-		Map<String, LitematicaSchematic> loaded = SchematicKey.loadedByKey();
 		int shown = 0;
 		for (Snapshot snapshot : ContainerData.collectMarked()) {
-			// Only show containers whose schematic is currently loaded.
-			LitematicaSchematic schematic = snapshot.schematicKey() != null ? loaded.get(snapshot.schematicKey()) : null;
-			if (schematic == null) {
-				continue;
-			}
+			if (!FocusState.isFocusedSchematicKey(snapshot.schematicKey())) continue;
 
 			BlockPos pos = snapshot.pos();
 			if (distanceSq(pos, eye) > LABEL_DISTANCE_SQ) {

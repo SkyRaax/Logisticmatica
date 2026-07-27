@@ -467,10 +467,13 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 			String dimension = mc.level.dimension().identifier().toString();
 			ContainerTracker tracker = ContainerTracker.getInstance();
 			tracker.reconcileSchematic(placement.getSchematic());
-			Set<BlockPos> localContainers = new LinkedHashSet<>();
-			for (BlockPos pos : tracker.markedFor(SchematicKey.of(placement.getSchematic()))) {
-				if (localContainers.size() >= ShareProtocol.MAX_CONTAINERS_PER_PROJECT) break;
-				localContainers.add(pos);
+			Set<BlockPos> localContainers = new LinkedHashSet<>(
+					tracker.markedFor(SchematicKey.of(placement.getSchematic())));
+			if (localContainers.size() > ShareProtocol.MAX_CONTAINERS_PER_PROJECT) {
+				InfoUtils.showGuiOrInGameMessage(MessageType.ERROR,
+						"logisticmatica.share.error.container_upload_limit",
+						localContainers.size(), ShareProtocol.MAX_CONTAINERS_PER_PROJECT);
+				return;
 			}
 			List<SharedContainerView> transfers = localContainers.stream()
 					.map(pos -> new SharedContainerView(dimension, pos.getX(), pos.getY(), pos.getZ(), Map.of()))
@@ -702,6 +705,7 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 	public void onPlacementRemoved(SchematicPlacement placement) {
 		if (FocusState.getPlacement() == placement) FocusController.clear();
 		this.placements.remove(placement.getHashId(), placement);
+		this.syncContainers();
 	}
 
 	@Override

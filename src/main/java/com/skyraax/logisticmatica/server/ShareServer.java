@@ -39,12 +39,10 @@ import com.skyraax.logisticmatica.share.SharedProjectView;
 public final class ShareServer {
 	private static final ShareServer INSTANCE = new ShareServer();
 	private static final String ADMIN_PERMISSION = Logisticmatica.MOD_ID + ".admin";
-	private static final int CONTAINER_REFRESH_INTERVAL = 20;
-	private static final int CONTAINER_SCANS_PER_INTERVAL = 256;
+	private static final int CONTAINER_SCANS_PER_TICK = 128;
 	private static final double CONTAINER_BIND_DISTANCE_SQ = 64.0;
 
 	private final ShareStore store = new ShareStore();
-	private int tickCounter;
 	private int containerScanCursor;
 	@Nullable private MinecraftServer server;
 
@@ -62,7 +60,6 @@ public final class ShareServer {
 	private void onServerStarted(MinecraftServer server) {
 		this.server = server;
 		this.store.start(server);
-		this.tickCounter = 0;
 		this.containerScanCursor = 0;
 	}
 
@@ -149,6 +146,12 @@ public final class ShareServer {
 		reader.requireFinished();
 		ServerLevel level = this.requireDimension(player.level().getServer(), dimension);
 
+		if (localContainers.size() > ShareProtocol.MAX_CONTAINERS_PER_PROJECT
+				|| this.totalContainerCount() + localContainers.size() > ShareProtocol.MAX_CONTAINERS_GLOBAL) {
+			this.sendError(player, payload.requestId(), "logisticmatica.share.error.container_limit");
+			return;
+		}
+
 		String hash = this.store.storeSchematic(schematic);
 		SharedProject project = new SharedProject(UUID.randomUUID(), player.getUUID(), player.getName().getString(),
 				name, dimension, x, y, z, rotation, mirror, hash, schematic.length);
@@ -161,8 +164,8 @@ public final class ShareServer {
 	}
 
 	/**
-	 * Promotes local marks during project creation. Only marks that satisfy the normal server-side
-	 * range and container checks are accepted; submitted item caches are never trusted.
+	 * Promotes every eligible local mark during project creation. Loaded positions are validated and
+	 * snapshotted immediately; unloaded positions remain empty until the server can read their chunk.
 	 */
 	private void importContainers(SharedProject project, ServerLevel level, ServerPlayer player,
 			List<SharedContainerView> containers) {
@@ -176,12 +179,8 @@ public final class ShareServer {
 			}
 
 			BlockPos requested = new BlockPos(imported.x(), imported.y(), imported.z());
-			if (!level.hasChunkAt(requested)
-					|| player.distanceToSqr(requested.getX() + 0.5,
-							requested.getY() + 0.5, requested.getZ() + 0.5) > CONTAINER_BIND_DISTANCE_SQ) {
-				continue;
-			}
-			BlockPos pos = ServerContainerAccess.canonical(level, requested);
+			boolean loaded = level.hasChunkAt(requested);
+			BlockPos pos = loaded ? ServerContainerAccess.canonical(level, requested) : requested.immutable();
 			SharedProject.ContainerKey key = new SharedProject.ContainerKey(project.dimension(),
 					pos.getX(), pos.getY(), pos.getZ());
 			if (project.containers().containsKey(key)) continue;
@@ -190,8 +189,10 @@ public final class ShareServer {
 					.anyMatch(existing -> existing.containers().containsKey(key));
 			if (claimed) continue;
 
-			Map<String, Integer> snapshot = ServerContainerAccess.snapshot(level, pos);
-			if (snapshot == null || snapshot.size() > ShareProtocol.MAX_ITEM_TYPES_PER_CONTAINER) continue;
+			Map<String, Integer> snapshot = loaded ? ServerContainerAccess.snapshot(level, pos) : Map.of();
+			if (snapshot == null || snapshot.size() > ShareProtocol.MAX_ITEM_TYPES_PER_CONTAINER) {
+				continue;
+			}
 			project.putContainer(key, snapshot);
 		}
 	}
@@ -527,18 +528,13 @@ public final class ShareServer {
 	}
 
 	private void onServerTick(MinecraftServer server) {
-		if (++this.tickCounter < CONTAINER_REFRESH_INTERVAL) {
-			return;
-		}
-		this.tickCounter = 0;
-
 		int total = this.totalContainerCount();
 		if (total == 0) {
 			this.containerScanCursor = 0;
 			return;
 		}
 		int start = Math.floorMod(this.containerScanCursor, total);
-		int budget = Math.min(CONTAINER_SCANS_PER_INTERVAL, total);
+		int budget = Math.min(CONTAINER_SCANS_PER_TICK, total);
 		int index = 0;
 		Set<SharedProject> changed = new LinkedHashSet<>();
 		for (SharedProject project : this.store.projects()) {

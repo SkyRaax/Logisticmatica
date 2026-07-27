@@ -36,8 +36,8 @@ import com.skyraax.logisticmatica.Logisticmatica;
  * contents.
  *
  * <p>Marking is per-schematic: a container belongs to one schematic (keyed by {@link SchematicKey}),
- * so the world can colour-code containers per schematic and only show those whose schematic is
- * loaded. Both the bindings <em>and</em> the contents are persisted per world (grouped by schematic),
+ * so the world can colour-code containers per schematic and only show those of the focused
+ * schematic. Both bindings <em>and</em> contents are persisted per world (grouped by schematic),
  * so after a rejoin a container's contents are known without re-opening it — which matters on servers,
  * where a container can only be read while its screen is open.
  *

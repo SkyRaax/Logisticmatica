@@ -14,6 +14,7 @@ import fi.dy.masa.litematica.schematic.placement.SchematicPlacement;
 public final class FocusState {
 	@Nullable private static LitematicaSchematic schematic;
 	@Nullable private static SchematicPlacement placement;
+	@Nullable private static String schematicKey;
 
 	private FocusState() {
 	}
@@ -21,21 +22,28 @@ public final class FocusState {
 	public static void setSchematic(@Nullable LitematicaSchematic schematic) {
 		FocusState.schematic = schematic;
 		FocusState.placement = null;
+		FocusState.schematicKey = schematic != null ? SchematicKey.of(schematic) : null;
 	}
 
 	public static void setPlacement(@Nullable SchematicPlacement placement) {
 		FocusState.placement = placement;
 		FocusState.schematic = placement != null ? placement.getSchematic() : null;
+		FocusState.schematicKey = FocusState.schematic != null ? SchematicKey.of(FocusState.schematic) : null;
 	}
 
 	public static void clear() {
 		FocusState.schematic = null;
 		FocusState.placement = null;
+		FocusState.schematicKey = null;
 	}
 
 	@Nullable
 	public static LitematicaSchematic getSchematic() {
 		return schematic;
+	}
+
+	public static boolean isFocusedSchematicKey(@Nullable String schematicKey) {
+		return schematicKey != null && schematicKey.equals(FocusState.schematicKey);
 	}
 
 	@Nullable

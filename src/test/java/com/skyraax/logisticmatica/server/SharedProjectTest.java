@@ -45,6 +45,20 @@ class SharedProjectTest {
 	}
 
 	@Test
+	void unloadedContainerMarkReceivesAuthoritativeSnapshotWhenAvailable() {
+		UUID owner = UUID.randomUUID();
+		SharedProject project = project(owner);
+		SharedProject.ContainerKey key = new SharedProject.ContainerKey("minecraft:overworld", 80, 64, -120);
+		project.putContainer(key, Map.of());
+
+		assertEquals(1, project.viewFor(owner, false).containers().size());
+		assertTrue(project.viewFor(owner, false).containers().getFirst().items().isEmpty());
+		assertTrue(project.refreshContainer(key, Map.of("minecraft:redstone", 64)));
+		assertEquals(Map.of("minecraft:redstone", 64),
+				project.viewFor(owner, false).containers().getFirst().items());
+	}
+
+	@Test
 	void directoryListingHidesProtectedProjectContents() {
 		SharedProject project = project(UUID.randomUUID());
 		project.replaceSubstitutions(Map.of("minecraft:stone", "minecraft:dirt"));

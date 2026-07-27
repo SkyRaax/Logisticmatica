@@ -23,7 +23,8 @@ import com.skyraax.logisticmatica.client.gui.ContainerData.ItemCount;
 import com.skyraax.logisticmatica.client.gui.ContainerData.Snapshot;
 
 /**
- * The "chest-tracker" peek: when the crosshair is on a marked container, draws a small inventory
+ * The "chest-tracker" peek: when the crosshair is on a focused project's marked container, draws
+ * a small inventory
  * panel (chest background + item sprites + stack counts) at the top of the screen showing what the
  * container holds. The contents come from the cache, so it works even when the container is closed,
  * out of reach, or on a server where it cannot be read live.
@@ -39,7 +40,8 @@ public class ContainerPeekRenderer implements IRenderer {
 		}
 
 		Minecraft mc = Minecraft.getInstance();
-		if (mc.level == null || mc.player == null || GuiUtils.getCurrentScreen() != null) {
+		if (mc.level == null || mc.player == null || FocusState.getSchematic() == null
+				|| GuiUtils.getCurrentScreen() != null) {
 			return;
 		}
 
@@ -53,7 +55,8 @@ public class ContainerPeekRenderer implements IRenderer {
 		}
 
 		Snapshot snapshot = ContainerData.snapshotOf(canonical);
-		if (snapshot == null || snapshot.items().isEmpty()) {
+		if (snapshot == null || !FocusState.isFocusedSchematicKey(snapshot.schematicKey())
+				|| snapshot.items().isEmpty()) {
 			return;
 		}
 

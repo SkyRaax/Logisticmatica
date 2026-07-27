@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
@@ -31,7 +30,8 @@ import com.skyraax.logisticmatica.Logisticmatica;
 import com.skyraax.logisticmatica.client.config.Configs;
 
 /**
- * Draws a wall-penetrating outline around every marked container. Registered as a MaLiLib
+ * Draws wall-penetrating outlines around the focused schematic's marked containers. Registered as
+ * a MaLiLib
  * world-last renderer; the no-depth pipeline is what makes the boxes visible through walls, and
  * double chests are drawn as both halves so the whole chest is outlined.
  *
@@ -65,7 +65,7 @@ public class ContainerHighlightRenderer implements IRenderer {
 			ProfilerFiller profiler) {
 		ContainerTracker tracker = ContainerTracker.getInstance();
 
-		if (tracker.isEmpty()) {
+		if (tracker.isEmpty() || FocusState.getSchematic() == null) {
 			return;
 		}
 
@@ -75,12 +75,11 @@ public class ContainerHighlightRenderer implements IRenderer {
 		}
 
 		Vec3 eye = mc.player.position();
-		Set<String> loadedKeys = SchematicKey.loadedByKey().keySet();
 		this.visible.clear();
 
-		// Only show containers whose schematic is currently loaded, coloured per schematic.
+		// World overlays follow the explicit Logisticmatica focus, not every loaded schematic.
 		for (Map.Entry<String, LinkedHashSet<BlockPos>> schematic : tracker.markedBySchematic().entrySet()) {
-			if (!loadedKeys.contains(schematic.getKey())) {
+			if (!FocusState.isFocusedSchematicKey(schematic.getKey())) {
 				continue;
 			}
 

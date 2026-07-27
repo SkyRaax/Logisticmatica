@@ -211,6 +211,7 @@
 	"logisticmatica.share.error.cannot_leave": "The owner cannot leave; delete the project instead.",
 	"logisticmatica.share.error.container_range": "The container must be in your current dimension and within eight blocks.",
 	"logisticmatica.share.error.container_limit": "This project has reached its container limit.",
+	"logisticmatica.share.error.container_upload_limit": "This schematic has %s marked containers, but the safe server limit is %s. No project was created.",
 	"logisticmatica.share.error.not_container": "The server could not read a container at that position.",
 	"logisticmatica.share.error.no_selection": "Select a Litematica placement first.",
 	"logisticmatica.share.error.unsaved_schematic": "The selected placement has no readable .litematic file.",

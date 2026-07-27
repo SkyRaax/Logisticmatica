@@ -18,7 +18,9 @@ limit; a compressed schematic itself is limited to 32 MiB. Strings and collectio
 before allocation.
 Server state is capped at 256 projects, 256 non-owner members per project and 2,048 tracked
 containers globally. A container snapshot may contain at most 256 distinct item types. These limits
-keep both persisted state and full project-list responses within the bounded envelope.
+keep persisted state, scan work and full project-list responses within the bounded envelope. The
+hard container cap is deliberately retained as an abuse and memory-safety boundary; ordinary
+project uploads no longer have a distance or loaded-chunk restriction.
 
 
 On join, the client sends `HELLO`. The server replies with the protocol version, feature mask,
@@ -116,9 +118,13 @@ revision; its UUID, transform, members, permissions, substitutions and container
 The server package imports only vanilla Minecraft, Fabric and the bundled permissions API; it has no
 Litematica or MaLiLib dependency.
 `CREATE_PROJECT` also carries the uploader's existing schematic-bound container marks. The server
-accepts only loaded real containers in the same dimension and within the normal eight-block range,
-canonicalizes double chests, rejects duplicates and limit violations, and takes a fresh vanilla
-inventory snapshot. Client-provided cached counts are never trusted; rejected marks remain local.
+registers every eligible mark in the project's dimension, regardless of its distance from the
+uploader. Loaded positions are canonicalized, validated and given a fresh vanilla inventory
+snapshot immediately. Marks in unloaded chunks are registered with an empty server snapshot and
+filled authoritatively as soon as their chunk is naturally loaded. Client-provided cached counts are
+never trusted; duplicates and invalid loaded positions remain local and are reported as a partial
+migration. The 2,048-container per-project and global safety caps remain bounded. Over-limit
+uploads are rejected before project creation and are never silently truncated.
 
 ## Placement and container synchronization
 
@@ -131,13 +137,20 @@ project UUID and authoritative cache file, then focused. The focus picker suppre
 bare-schematic row whenever a placement already represents the same schematic object. Accepted
 container marks are promoted to server-owned bindings; marks rejected by the server remain local and
 the client reports a partial migration instead of silently discarding them.
+Persisted local snapshots remain the offline/no-server fallback; a shared binding and its contents
+come from the server for every authorized client.
 
 For a shared schematic, the normal mark-container hotkey sends a server request instead of creating
 a private client mark. The server canonicalizes double chests, requires the player to be in the same
-dimension and within eight blocks, and refreshes loaded inventories on a rolling one-second schedule.
-At most 256 containers are read in one interval, preventing a large shared world from causing a tick
-spike. The resulting item-id/count snapshots feed the existing client material list, highlight,
-label and peek views.
+dimension and within eight blocks. This proximity check applies only to a new manual mark, not to
+upload-time promotion. The server scans up to 128 registered positions per tick; at the 2,048
+container hard cap every naturally loaded inventory is revisited within 16 ticks. Changed snapshots
+are broadcast to every authorized online client.
+
+The material list, world highlights, floating content labels and look-at peek follow the explicit
+Logisticmatica focus. Clearing focus hides all of them without deleting server data; removing a
+shared placement also removes its projected server bindings locally until the placement is loaded
+again. The separate container overview screen retains its explicit All/Focused selector.
 
 ## Compatibility
 

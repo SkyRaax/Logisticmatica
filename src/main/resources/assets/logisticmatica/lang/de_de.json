@@ -211,6 +211,7 @@
 	"logisticmatica.share.error.cannot_leave": "Der Eigentuemer kann nicht austreten; loesche stattdessen das Projekt.",
 	"logisticmatica.share.error.container_range": "Der Container muss in deiner Dimension und hoechstens acht Bloecke entfernt sein.",
 	"logisticmatica.share.error.container_limit": "Dieses Projekt hat sein Container-Limit erreicht.",
+	"logisticmatica.share.error.container_upload_limit": "Diese Schematic hat %s markierte Container, das sichere Serverlimit ist jedoch %s. Es wurde kein Projekt erstellt.",
 	"logisticmatica.share.error.not_container": "Der Server konnte an dieser Position keinen Container lesen.",
 	"logisticmatica.share.error.no_selection": "Waehle zuerst eine Litematica-Platzierung aus.",
 	"logisticmatica.share.error.unsaved_schematic": "Die ausgewaehlte Platzierung hat keine lesbare .litematic-Datei.",
