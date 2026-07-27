@@ -88,6 +88,9 @@ Every project appears in the server directory and has one public-access policy:
 | Public Supplier | Builder |
 | Public Editor | Editor |
 
+Directory labels retain the public-mode names Viewer, Supplier and Editor. Builder remains the
+individual member preset, even though Public Supplier deliberately uses the same capability mask.
+
 Public access never grants invitations, permission management or deletion. Accepted member rights
 take precedence over the public preset. Invitations and access requests are distinct persisted
 states so either side can cancel or respond without accidentally accepting the other flow.

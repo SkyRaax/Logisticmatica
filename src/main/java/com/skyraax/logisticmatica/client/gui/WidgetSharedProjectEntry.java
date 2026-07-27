@@ -41,7 +41,7 @@ public class WidgetSharedProjectEntry extends WidgetListEntryBase<SharedProjectV
 							: this.project.member() ? role(this.project.myPermissions())
 							: this.project.can(SharePermission.VIEW)
 									? StringUtils.translate("logisticmatica.gui.share.public_role",
-											role(this.project.myPermissions()))
+											StringUtils.translate(this.project.publicAccess().publicRoleKey()))
 									: StringUtils.translate("logisticmatica.gui.share.request_access");
 			if (!this.project.pendingInvite() && !this.project.accessRequested()
 					&& this.project.can(SharePermission.VIEW)) {

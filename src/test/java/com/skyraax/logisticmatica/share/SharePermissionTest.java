@@ -1,5 +1,6 @@
 package com.skyraax.logisticmatica.share;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -24,5 +25,12 @@ class SharePermissionTest {
 		assertTrue(SharePermission.UPDATE_SCHEMATIC.isIn(ShareAccess.PUBLIC_EDITOR.permissions()));
 		assertFalse(SharePermission.MANAGE_PERMISSIONS.isIn(ShareAccess.PUBLIC_EDITOR.permissions()));
 		assertFalse(SharePermission.DELETE.isIn(ShareAccess.PUBLIC_EDITOR.permissions()));
+	}
+
+	@Test
+	void publicModesKeepTheirUserFacingNames() {
+		assertEquals("logisticmatica.gui.share.public.viewer", ShareAccess.PUBLIC_VIEWER.publicRoleKey());
+		assertEquals("logisticmatica.gui.share.public.supplier", ShareAccess.PUBLIC_SUPPLIER.publicRoleKey());
+		assertEquals("logisticmatica.gui.share.public.editor", ShareAccess.PUBLIC_EDITOR.publicRoleKey());
 	}
 }
