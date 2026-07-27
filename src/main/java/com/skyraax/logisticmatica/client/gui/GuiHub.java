@@ -37,13 +37,11 @@ public class GuiHub extends GuiBase {
 
 		this.addMenuButton(x, y, "material_list", true, this::openMaterialList);
 		y += 24;
-		this.addMenuButton(x, y, "focus", true, () -> this.open(new GuiFocusPicker()));
+		this.addMenuButton(x, y, "projects", true, () -> this.open(new GuiProjects()));
 		y += 24;
 		this.addMenuButton(x, y, "containers", true, () -> this.open(new GuiContainerOverview()));
 		y += 24;
 		this.addMenuButton(x, y, "substitutions", true, this::openSubstitutions);
-		y += 24;
-		this.addMenuButton(x, y, "share", true, () -> this.open(new GuiSharing()));
 		y += 24;
 		this.addMenuButton(x, y, "settings", true, () -> this.open(new GuiConfigs()));
 
@@ -69,7 +67,7 @@ public class GuiHub extends GuiBase {
 
 	private void openMaterialList() {
 		MaterialListBase materialList = DataManager.getMaterialList();
-		this.open(materialList != null ? new GuiMaterialListView(materialList) : new GuiFocusPicker());
+		this.open(materialList != null ? new GuiMaterialListView(materialList) : new GuiProjects());
 	}
 
 	private void openSubstitutions() {
@@ -77,7 +75,7 @@ public class GuiHub extends GuiBase {
 
 		if (schematic == null) {
 			InfoUtils.showGuiOrInGameMessage(MessageType.WARNING, "logisticmatica.message.substitutions.no_focus");
-			this.open(new GuiFocusPicker());
+			this.open(new GuiProjects());
 			return;
 		}
 

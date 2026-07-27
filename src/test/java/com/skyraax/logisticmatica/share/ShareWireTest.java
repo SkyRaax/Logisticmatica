@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.List;
+import java.util.Collections;
 import java.util.Map;
 import java.util.UUID;
 
@@ -21,9 +22,7 @@ class ShareWireTest {
 				"a".repeat(64), 1234, SharePermission.EDITOR, ShareAccess.PUBLIC_EDITOR,
 				true, false, false,
 				List.of(new SharedMemberView(ownerId, "SkyRaax", SharePermission.ALL, true)),
-				Map.of("minecraft:spruce_planks", "minecraft:oak_planks"),
-				List.of(new SharedContainerView("minecraft:overworld", 10, 65, -9,
-						Map.of("minecraft:redstone", 128))));
+				Map.of("minecraft:spruce_planks", "minecraft:oak_planks"), 17L, 1);
 
 		assertEquals(List.of(expected), ShareWire.decodeProjects(ShareWire.encodeProjects(List.of(expected))));
 	}
@@ -38,6 +37,40 @@ class ShareWireTest {
 		assertEquals(expected, reader.readContainers());
 		reader.requireFinished();
 	}
+
+	@Test
+	void boundedContainerSnapshotRoundTrips() throws IOException {
+		UUID projectId = UUID.randomUUID();
+		SharedContainerSnapshot expected = new SharedContainerSnapshot(projectId, 8L, true, false,
+				List.of(new SharedContainerView("minecraft:overworld", 1, 64, -2,
+						Map.of("minecraft:stone", 64))));
+
+		assertEquals(expected, ShareWire.decodeContainerSnapshot(
+				ShareWire.encodeContainerSnapshot(expected)));
+	}
+
+	@Test
+	void boundedContainerDeltaRoundTrips() throws IOException {
+		UUID projectId = UUID.randomUUID();
+		SharedContainerDelta expected = new SharedContainerDelta(projectId, 9L,
+				List.of(new SharedContainerView("minecraft:overworld", 2, 64, -2,
+						Map.of("minecraft:redstone", 128))),
+				List.of(new SharedContainerKey("minecraft:overworld", 1, 64, -2)));
+
+		assertEquals(expected, ShareWire.decodeContainerDelta(
+				ShareWire.encodeContainerDelta(expected)));
+	}
+
+	@Test
+	void rejectsOversizedContainerSnapshotChunk() {
+		SharedContainerView container = new SharedContainerView("minecraft:overworld", 1, 64, -2, Map.of());
+		SharedContainerSnapshot oversized = new SharedContainerSnapshot(UUID.randomUUID(), 1L,
+				Collections.nCopies(ShareProtocol.MAX_CONTAINER_CHANGES_PER_PACKET + 1, container));
+
+		assertThrows(IllegalStateException.class, () -> ShareWire.encodeContainerSnapshot(oversized));
+	}
+
+
 
 	@Test
 	void onlinePlayersRoundTripWithStableIds() throws IOException {

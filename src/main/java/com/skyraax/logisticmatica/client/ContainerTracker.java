@@ -7,6 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import javax.annotation.Nullable;
 
 import com.google.gson.JsonArray;
@@ -57,7 +58,14 @@ public class ContainerTracker {
 	/** Insertion-ordered content cache; marked positions are never evicted. */
 	private final Map<BlockPos, Object2IntOpenHashMap<ItemType>> contents = new LinkedHashMap<>();
 	/** Authoritative bindings injected from the sharing server; never persisted in the client file. */
-	private final Set<BlockPos> serverBindings = new LinkedHashSet<>();
+	private final Map<UUID, LinkedHashSet<BlockPos>> serverBindings = new LinkedHashMap<>();
+	/** Reverse lookup for removing one project's live snapshot without disturbing another. */
+	private final Map<BlockPos, UUID> serverProjectByPos = new HashMap<>();
+	/** Local bindings temporarily hidden by an active server project. */
+	private final Map<UUID, Map<BlockPos, DisplacedLocalBinding>> displacedLocalBindings = new HashMap<>();
+	private record DisplacedLocalBinding(String schematicKey,
+			@Nullable Object2IntOpenHashMap<ItemType> contents) {}
+
 
 	private ContainerTracker() {
 	}
@@ -150,20 +158,32 @@ public class ContainerTracker {
 		this.keyByPos.clear();
 		this.contents.clear();
 		this.serverBindings.clear();
+		this.serverProjectByPos.clear();
+		this.displacedLocalBindings.clear();
 	}
 
 	/** Removes the previous server snapshot before applying a fresh one. */
 	public void clearServerBindings() {
-		for (BlockPos pos : this.serverBindings) {
-			String key = this.keyByPos.remove(pos);
-			LinkedHashSet<BlockPos> positions = key != null ? this.markedBySchematic.get(key) : null;
-			if (positions != null) {
-				positions.remove(pos);
-				if (positions.isEmpty()) this.markedBySchematic.remove(key);
+		for (UUID projectId : Set.copyOf(this.serverBindings.keySet())) {
+			this.clearServerBindings(projectId);
+		}
+	}
+
+	public void clearServerBindings(UUID projectId) {
+		Set<BlockPos> positions = this.serverBindings.remove(projectId);
+		if (positions == null) return;
+		String projectKey = projectKey(projectId);
+		for (BlockPos pos : positions) {
+			if (!projectId.equals(this.serverProjectByPos.remove(pos))) continue;
+			this.keyByPos.remove(pos, projectKey);
+			LinkedHashSet<BlockPos> marked = this.markedBySchematic.get(projectKey);
+			if (marked != null) {
+				marked.remove(pos);
+				if (marked.isEmpty()) this.markedBySchematic.remove(projectKey);
 			}
 			this.contents.remove(pos);
+			this.restoreDisplaced(projectId, pos);
 		}
-		this.serverBindings.clear();
 	}
 
 	/**
@@ -171,23 +191,43 @@ public class ContainerTracker {
 	 *
 	 * @return true when a matching local binding was promoted to server ownership
 	 */
-	public boolean setServerBinding(LitematicaSchematic schematic, BlockPos pos, Map<String, Integer> items) {
+	public boolean setServerBinding(UUID projectId, BlockPos pos, Map<String, Integer> items) {
+		return this.setServerBinding(projectId, pos, items, false);
+	}
+
+	public boolean setServerBinding(UUID projectId, BlockPos pos, Map<String, Integer> items, boolean promoteLocal) {
 		BlockPos immutable = pos.immutable();
-		String key = SchematicKey.of(schematic);
+		String key = projectKey(projectId);
 		String existing = this.keyByPos.get(immutable);
 		boolean promoted = false;
-		if (existing != null && !this.serverBindings.contains(immutable)) {
-			if (!SchematicKey.refersTo(existing, schematic)) return false;
+		UUID existingProject = this.serverProjectByPos.get(immutable);
+		if (existingProject != null && !existingProject.equals(projectId)) {
+			this.removeServerBinding(existingProject, immutable);
+			existing = this.keyByPos.get(immutable);
+			existingProject = this.serverProjectByPos.get(immutable);
+		}
+		if (existing != null && existingProject == null) {
 			LinkedHashSet<BlockPos> local = this.markedBySchematic.get(existing);
+			if (!promoteLocal) {
+				Object2IntOpenHashMap<ItemType> current = this.contents.get(immutable);
+				Object2IntOpenHashMap<ItemType> saved = null;
+				if (current != null) {
+					saved = new Object2IntOpenHashMap<>();
+					saved.putAll(current);
+				}
+				this.displacedLocalBindings.computeIfAbsent(projectId, ignored -> new HashMap<>())
+						.putIfAbsent(immutable, new DisplacedLocalBinding(existing, saved));
+			}
 			if (local != null) {
 				local.remove(immutable);
 				if (local.isEmpty()) this.markedBySchematic.remove(existing);
 			}
-			promoted = true;
+			promoted = promoteLocal;
 		}
 		this.markedBySchematic.computeIfAbsent(key, ignored -> new LinkedHashSet<>()).add(immutable);
 		this.keyByPos.put(immutable, key);
-		this.serverBindings.add(immutable);
+		this.serverBindings.computeIfAbsent(projectId, ignored -> new LinkedHashSet<>()).add(immutable);
+		this.serverProjectByPos.put(immutable, projectId);
 
 		Object2IntOpenHashMap<ItemType> snapshot = new Object2IntOpenHashMap<>();
 		for (Map.Entry<String, Integer> item : items.entrySet()) {
@@ -197,11 +237,53 @@ public class ContainerTracker {
 		this.contents.put(immutable, snapshot);
 		return promoted;
 	}
-
 	/** Caches a container's contents, whether or not it is currently marked. */
 	public void setContents(BlockPos canonical, Object2IntOpenHashMap<ItemType> counts) {
 		this.contents.put(canonical.immutable(), counts);
 		this.evictUntilWithinCap();
+	}
+	public void removeServerBinding(UUID projectId, BlockPos pos) {
+		BlockPos immutable = pos.immutable();
+		if (!projectId.equals(this.serverProjectByPos.get(immutable))) return;
+		this.serverProjectByPos.remove(immutable);
+		Set<BlockPos> projectPositions = this.serverBindings.get(projectId);
+		if (projectPositions != null) {
+			projectPositions.remove(immutable);
+			if (projectPositions.isEmpty()) this.serverBindings.remove(projectId);
+		}
+		String key = projectKey(projectId);
+		this.keyByPos.remove(immutable, key);
+		LinkedHashSet<BlockPos> marked = this.markedBySchematic.get(key);
+		if (marked != null) {
+			marked.remove(immutable);
+			if (marked.isEmpty()) this.markedBySchematic.remove(key);
+		}
+		this.contents.remove(immutable);
+		this.restoreDisplaced(projectId, immutable);
+	}
+
+	private void restoreDisplaced(UUID projectId, BlockPos pos) {
+		Map<BlockPos, DisplacedLocalBinding> byPosition = this.displacedLocalBindings.get(projectId);
+		if (byPosition == null) return;
+		DisplacedLocalBinding local = byPosition.remove(pos);
+		if (byPosition.isEmpty()) this.displacedLocalBindings.remove(projectId);
+		if (local == null || this.keyByPos.containsKey(pos)) return;
+		this.markedBySchematic.computeIfAbsent(local.schematicKey(), ignored -> new LinkedHashSet<>()).add(pos);
+		this.keyByPos.put(pos, local.schematicKey());
+		if (local.contents() != null) {
+			this.contents.put(pos, local.contents());
+		} else {
+			this.contents.remove(pos);
+		}
+	}
+
+
+	public static String projectKey(UUID projectId) {
+		return "project:" + projectId;
+	}
+
+	private boolean isServerBinding(BlockPos pos) {
+		return this.serverProjectByPos.containsKey(pos);
 	}
 
 	/** The cached contents of a container, or null if we have never looked inside it. */
@@ -259,7 +341,7 @@ public class ContainerTracker {
 			JsonArray array = new JsonArray();
 
 			for (BlockPos pos : schematic.getValue()) {
-				if (this.serverBindings.contains(pos)) continue;
+				if (this.isServerBinding(pos)) continue;
 				JsonObject entry = new JsonObject();
 				entry.add("pos", JsonUtils.blockPosToJson(pos));
 
@@ -277,6 +359,28 @@ public class ContainerTracker {
 
 			if (!array.isEmpty()) root.add(schematic.getKey(), array);
 		}
+
+		for (Map<BlockPos, DisplacedLocalBinding> displaced : this.displacedLocalBindings.values()) {
+			for (Map.Entry<BlockPos, DisplacedLocalBinding> binding : displaced.entrySet()) {
+				DisplacedLocalBinding local = binding.getValue();
+				JsonArray array = root.has(local.schematicKey())
+						? root.getAsJsonArray(local.schematicKey()) : new JsonArray();
+				JsonObject entry = new JsonObject();
+				entry.add("pos", JsonUtils.blockPosToJson(binding.getKey()));
+				Object2IntOpenHashMap<ItemType> snapshot = local.contents();
+				if (snapshot != null && !snapshot.isEmpty()) {
+					JsonObject items = new JsonObject();
+					for (Object2IntMap.Entry<ItemType> item : snapshot.object2IntEntrySet()) {
+						items.addProperty(idOf(item.getKey()), item.getIntValue());
+					}
+					entry.add("items", items);
+				}
+				array.add(entry);
+				root.add(local.schematicKey(), array);
+			}
+		}
+
+
 
 		Path file = getStorageFile();
 		FileUtils.createDirectoriesIfMissing(file.getParent());

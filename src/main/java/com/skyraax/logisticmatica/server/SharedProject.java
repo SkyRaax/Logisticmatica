@@ -20,7 +20,7 @@ import com.skyraax.logisticmatica.share.SharedProjectView;
 
 /** Mutable server-owned state for one shared placement. Accessed only on the logical server thread. */
 public final class SharedProject {
-	public static final int SCHEMA_VERSION = 2;
+	public static final int SCHEMA_VERSION = 3;
 
 	public record ContainerKey(String dimension, int x, int y, int z) {
 	}
@@ -65,6 +65,7 @@ public final class SharedProject {
 	private String ownerName;
 	private String name;
 	private long revision;
+	private long containerRevision;
 	private String dimension;
 	private int x;
 	private int y;
@@ -93,6 +94,7 @@ public final class SharedProject {
 		this.schematicHash = schematicHash;
 		this.schematicSize = schematicSize;
 		this.revision = 1L;
+		this.containerRevision = 1L;
 	}
 
 	public UUID id() { return this.id; }
@@ -100,6 +102,7 @@ public final class SharedProject {
 	public String ownerName() { return this.ownerName; }
 	public String name() { return this.name; }
 	public long revision() { return this.revision; }
+	public long containerRevision() { return this.containerRevision; }
 	public String dimension() { return this.dimension; }
 	public int x() { return this.x; }
 	public int y() { return this.y; }
@@ -246,6 +249,7 @@ public final class SharedProject {
 		Map<String, Integer> previous = this.containers.put(key, immutable);
 		if (!immutable.equals(previous)) {
 			this.bumpRevision();
+			this.bumpContainerRevision();
 			return true;
 		}
 		return false;
@@ -257,11 +261,20 @@ public final class SharedProject {
 		Map<String, Integer> previous = this.containers.put(key, immutable);
 		return !immutable.equals(previous);
 	}
+	/** Commits one logical batch of volatile inventory refreshes. */
+	public void commitContainerRefresh() {
+		this.bumpContainerRevision();
+	}
+
+	public List<SharedContainerView> containerSnapshot() {
+		return this.containers.entrySet().stream().map(entry -> this.containerView(entry.getKey())).toList();
+	}
 
 
 	public boolean removeContainer(ContainerKey key) {
 		if (this.containers.remove(key) != null) {
 			this.bumpRevision();
+			this.bumpContainerRevision();
 			return true;
 		}
 		return false;
@@ -271,6 +284,19 @@ public final class SharedProject {
 		this.revision = Math.max(1L, this.revision + 1L);
 	}
 
+
+	private void bumpContainerRevision() {
+		this.containerRevision = Math.max(1L, this.containerRevision + 1L);
+	}
+
+	@Nullable
+	public SharedContainerView containerView(ContainerKey key) {
+		Map<String, Integer> items = this.containers.get(key);
+		if (items == null) {
+			return null;
+		}
+		return new SharedContainerView(key.dimension(), key.x(), key.y(), key.z(), items);
+	}
 	public SharedProjectView viewFor(UUID playerId, boolean administrator) {
 		int permissions = administrator ? SharePermission.ALL : this.permissionsFor(playerId);
 		Member viewer = this.members.get(playerId);
@@ -292,16 +318,12 @@ public final class SharedProject {
 					.forEach(memberViews::add);
 		}
 
-		List<SharedContainerView> containerViews = mayView ? this.containers.entrySet().stream()
-				.map(entry -> new SharedContainerView(entry.getKey().dimension(), entry.getKey().x(),
-						entry.getKey().y(), entry.getKey().z(), entry.getValue()))
-				.toList() : List.of();
 
 		return new SharedProjectView(this.id, this.revision, this.name, this.ownerId, this.ownerName,
 				this.dimension, this.x, this.y, this.z, this.rotation, this.mirror,
 				mayView ? this.schematicHash : "", mayView ? this.schematicSize : 0, permissions,
-				this.publicAccess, member, pending, requested, memberViews,
-				mayView ? this.substitutions : Map.of(), containerViews);
+				this.publicAccess, member, pending, requested, memberViews, mayView ? this.substitutions : Map.of(),
+				mayView ? this.containerRevision : 0L, mayView ? this.containers.size() : 0);
 	}
 
 	public JsonObject toJson() {
@@ -312,6 +334,7 @@ public final class SharedProject {
 		json.addProperty("ownerName", this.ownerName);
 		json.addProperty("name", this.name);
 		json.addProperty("revision", this.revision);
+		json.addProperty("containerRevision", this.containerRevision);
 		json.addProperty("dimension", this.dimension);
 		json.addProperty("x", this.x);
 		json.addProperty("y", this.y);
@@ -365,6 +388,8 @@ public final class SharedProject {
 					json.get("rotation").getAsInt(), json.get("mirror").getAsInt(),
 					json.get("schematicHash").getAsString(), json.get("schematicSize").getAsInt());
 			project.revision = Math.max(1L, json.get("revision").getAsLong());
+			project.containerRevision = json.has("containerRevision")
+					? Math.max(1L, json.get("containerRevision").getAsLong()) : 1L;
 			if (json.has("publicAccess")) {
 				project.publicAccess = ShareAccess.valueOf(json.get("publicAccess").getAsString());
 			}

@@ -26,13 +26,15 @@ public record SharedProjectView(
 		boolean accessRequested,
 		List<SharedMemberView> members,
 		Map<String, String> substitutions,
-		List<SharedContainerView> containers) {
+		long containerRevision,
+		int containerCount) {
 	public SharedProjectView {
 		myPermissions = SharePermission.sanitize(myPermissions);
 		publicAccess = publicAccess != null ? publicAccess : ShareAccess.REQUEST_ONLY;
 		members = List.copyOf(members);
 		substitutions = Map.copyOf(substitutions);
-		containers = List.copyOf(containers);
+		containerRevision = Math.max(0L, containerRevision);
+		containerCount = Math.max(0, containerCount);
 	}
 
 	public boolean can(SharePermission permission) {

@@ -81,6 +81,46 @@ public final class ShareWire {
 		reader.requireFinished();
 		return players;
 	}
+	public static byte[] encodeContainerSnapshot(SharedContainerSnapshot snapshot) {
+		return encode(writer -> {
+			writer.writeUuid(snapshot.projectId());
+			writer.writeLong(snapshot.revision());
+			writer.writeBoolean(snapshot.reset());
+			writer.writeBoolean(snapshot.complete());
+			writer.writeContainers(snapshot.containers(), ShareProtocol.MAX_CONTAINER_CHANGES_PER_PACKET);
+		});
+	}
+
+	public static SharedContainerSnapshot decodeContainerSnapshot(byte[] body) throws IOException {
+		Reader reader = decode(body);
+		SharedContainerSnapshot snapshot = new SharedContainerSnapshot(reader.readUuid(), reader.readLong(),
+				reader.readBoolean(), reader.readBoolean(),
+				reader.readContainers(ShareProtocol.MAX_CONTAINER_CHANGES_PER_PACKET));
+		reader.requireFinished();
+		return snapshot;
+	}
+
+	public static byte[] encodeContainerDelta(SharedContainerDelta delta) {
+		return encode(writer -> {
+			writer.writeUuid(delta.projectId());
+			writer.writeLong(delta.revision());
+			writer.writeContainers(delta.upserts(), ShareProtocol.MAX_CONTAINER_CHANGES_PER_PACKET);
+			writer.writeCount(delta.removals().size(), ShareProtocol.MAX_CONTAINER_CHANGES_PER_PACKET);
+			for (SharedContainerKey key : delta.removals()) writer.writeContainerKey(key);
+		});
+	}
+
+	public static SharedContainerDelta decodeContainerDelta(byte[] body) throws IOException {
+		Reader reader = decode(body);
+		UUID projectId = reader.readUuid();
+		long revision = reader.readLong();
+		List<SharedContainerView> upserts = reader.readContainers(ShareProtocol.MAX_CONTAINER_CHANGES_PER_PACKET);
+		int removedCount = reader.readCount(ShareProtocol.MAX_CONTAINER_CHANGES_PER_PACKET);
+		List<SharedContainerKey> removals = new ArrayList<>(removedCount);
+		for (int i = 0; i < removedCount; i++) removals.add(reader.readContainerKey());
+		reader.requireFinished();
+		return new SharedContainerDelta(projectId, revision, upserts, removals);
+	}
 
 	public static final class Writer {
 		private final DataOutputStream output;
@@ -132,7 +172,11 @@ public final class ShareWire {
 		}
 
 		public void writeContainers(List<SharedContainerView> containers) throws IOException {
-			this.writeCount(containers.size(), ShareProtocol.MAX_CONTAINERS_PER_PROJECT);
+			this.writeContainers(containers, ShareProtocol.MAX_CONTAINERS_PER_PROJECT);
+		}
+
+		public void writeContainers(List<SharedContainerView> containers, int maximum) throws IOException {
+			this.writeCount(containers.size(), maximum);
 			for (SharedContainerView container : containers) {
 				this.writeString(container.dimension());
 				this.writeInt(container.x());
@@ -146,7 +190,14 @@ public final class ShareWire {
 			}
 		}
 
-		private void writeCount(int count, int maximum) throws IOException {
+		public void writeContainerKey(SharedContainerKey key) throws IOException {
+			this.writeString(key.dimension());
+			this.writeInt(key.x());
+			this.writeInt(key.y());
+			this.writeInt(key.z());
+		}
+
+		public void writeCount(int count, int maximum) throws IOException {
 			if (count < 0 || count > maximum) {
 				throw new IOException("Collection count " + count + " exceeds " + maximum);
 			}
@@ -183,7 +234,8 @@ public final class ShareWire {
 			}
 
 			this.writeStringMap(project.substitutions(), ShareProtocol.MAX_SUBSTITUTIONS_PER_PROJECT);
-			this.writeContainers(project.containers());
+			this.writeLong(project.containerRevision());
+			this.writeInt(project.containerCount());
 		}
 	}
 
@@ -238,7 +290,11 @@ public final class ShareWire {
 		}
 
 		public List<SharedContainerView> readContainers() throws IOException {
-			int containerCount = this.readCount(ShareProtocol.MAX_CONTAINERS_PER_PROJECT);
+			return this.readContainers(ShareProtocol.MAX_CONTAINERS_PER_PROJECT);
+		}
+
+		public List<SharedContainerView> readContainers(int maximum) throws IOException {
+			int containerCount = this.readCount(maximum);
 			List<SharedContainerView> containers = new ArrayList<>(containerCount);
 			for (int i = 0; i < containerCount; i++) {
 				String dimension = this.readString();
@@ -253,6 +309,10 @@ public final class ShareWire {
 				containers.add(new SharedContainerView(dimension, x, y, z, items));
 			}
 			return containers;
+		}
+
+		public SharedContainerKey readContainerKey() throws IOException {
+			return new SharedContainerKey(this.readString(), this.readInt(), this.readInt(), this.readInt());
 		}
 
 		public int readCount(int maximum) throws IOException {
@@ -297,11 +357,13 @@ public final class ShareWire {
 			}
 
 			Map<String, String> substitutions = this.readStringMap(ShareProtocol.MAX_SUBSTITUTIONS_PER_PROJECT);
-			List<SharedContainerView> containers = this.readContainers();
+			long containerRevision = this.readLong();
+			int containerCount = this.readCount(ShareProtocol.MAX_CONTAINERS_PER_PROJECT);
 
 			return new SharedProjectView(id, revision, name, ownerId, ownerName, dimension, x, y, z,
 					rotation, mirror, schematicHash, schematicSize, myPermissions, publicAccess,
-					member, pendingInvite, accessRequested, members, substitutions, containers);
+					member, pendingInvite, accessRequested, members, substitutions,
+					containerRevision, containerCount);
 		}
 	}
 }

@@ -9,7 +9,7 @@ import fi.dy.masa.malilib.util.GuiUtils;
 import fi.dy.masa.litematica.data.DataManager;
 import fi.dy.masa.litematica.materials.MaterialListBase;
 
-import com.skyraax.logisticmatica.client.gui.GuiFocusPicker;
+import com.skyraax.logisticmatica.client.gui.GuiProjects;
 import com.skyraax.logisticmatica.client.gui.GuiMaterialListView;
 
 /**
@@ -22,7 +22,7 @@ public class OpenMaterialListCallback implements IHotkeyCallback {
 		MaterialListBase materialList = DataManager.getMaterialList();
 
 		if (materialList == null) {
-			GuiFocusPicker picker = new GuiFocusPicker();
+			GuiProjects picker = new GuiProjects();
 			picker.setParent(GuiUtils.getCurrentScreen());
 			GuiBase.openGui(picker);
 			return true;

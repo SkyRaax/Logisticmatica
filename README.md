@@ -43,22 +43,28 @@ placement sharing with live sync and granular permissions.
 ## Sharing workflow
 
 1. Install the same Logisticmatica jar on the Fabric server and every participating client.
-2. Open **Logisticmatica > Sharing > Choose Placement to Share**. The searchable picker contains
-   every loaded Litematica placement and marks the currently selected one.
-3. Every server project is visible in the project directory. Restricted projects reveal metadata
-   only; players can request a Viewer, Builder, Editor or Manager role.
+2. Open **Logisticmatica > Projects**. This is the canonical searchable workspace for server
+   projects, local placements and unplaced local schematics. A shared placement is shown once as its
+   server project, never again as a duplicate local row.
+3. Select **Choose Placement to Share** for a genuinely local placement, or open a server project to
+   activate it. Activating downloads it when necessary, focuses its material list and container data,
+   and remembers it per server and dimension. Restricted projects reveal metadata only; players can
+   request a Viewer, Builder, Editor or Manager role.
 4. Owners and managers can invite players from a searchable online-player list, approve access
    requests, select role presets and fine-tune individual capabilities.
-5. **Download / Reload** fetches the authoritative server file. **Replace from Placement** uploads
-   another loaded placement's file while preserving the shared origin, rotation, permissions,
-   substitutions and containers.
+5. **Download / Reload** refreshes the linked server placement. **Export Local Copy** writes an
+   independent file whose name includes the source server. **Replace from Placement** uploads a local
+   placement's file while preserving the shared origin, rotation, permissions, substitutions and
+   containers. A linked shared placement cannot be shared again by accident.
 6. Public access can allow everyone to view, supply shared containers or edit while never granting
    permission administration or deletion.
-7. Moving, rotating or mirroring a shared placement is broadcast live. Marked containers belonging
-   to it are read by the server and their item counts are kept in sync for all permitted clients.
+7. Moving, rotating or mirroring a shared placement is broadcast live. The active project's marked
+   containers are loaded from an authoritative chunked server snapshot and then kept current through
+   live deltas. Deactivating hides Logisticmatica's list, highlights, labels and peek without deleting
+   the project or hiding unrelated Litematica placements.
 
-If the client joins a server without Logisticmatica, it displays a warning and disables only the
-Sharing screen actions; all local material, container and substitution features continue to work.
+If the client joins a server without Logisticmatica, it displays a warning and disables only server
+actions in Projects; all local material, container and substitution features continue to work.
 
 The server stores authority data inside the world at `data/logisticmatica/`; clients keep verified,
 server-specific schematic downloads under `config/logisticmatica/shared/`. See

@@ -120,7 +120,14 @@ public class GuiFocusPicker extends GuiListBase<GuiFocusPicker.FocusEntry, GuiFo
 	}
 
 	private void choose(FocusEntry entry) {
-		if (entry.placement() != null) FocusController.focusPlacement(entry.placement());
+		if (entry.placement() != null) {
+			SharedProjectView project = this.sharing.projectFor(entry.placement());
+			if (project != null) {
+				FocusController.focusSharedPlacement(entry.placement(), project.id());
+			} else {
+				FocusController.focusPlacement(entry.placement());
+			}
+		}
 		else FocusController.focusSchematic(entry.schematic());
 		this.initGui();
 	}
@@ -173,7 +180,8 @@ public class GuiFocusPicker extends GuiListBase<GuiFocusPicker.FocusEntry, GuiFo
 				represented.add(placement.getSchematic());
 			}
 			for (LitematicaSchematic schematic : SchematicHolder.getInstance().getAllSchematics()) {
-				if (!represented.contains(schematic)) entries.add(new FocusEntry(null, schematic));
+				if (!represented.contains(schematic) && !this.gui.sharing.isSharedSchematic(schematic))
+					entries.add(new FocusEntry(null, schematic));
 			}
 			entries.sort(Comparator.comparing((FocusEntry entry) -> !entry.focused())
 					.thenComparing(entry -> !entry.isPlacement())

@@ -10,7 +10,7 @@ import fi.dy.masa.malilib.util.InfoUtils;
 
 import fi.dy.masa.litematica.schematic.LitematicaSchematic;
 
-import com.skyraax.logisticmatica.client.gui.GuiFocusPicker;
+import com.skyraax.logisticmatica.client.gui.GuiProjects;
 import com.skyraax.logisticmatica.client.gui.GuiSubstitutions;
 
 /**
@@ -26,7 +26,7 @@ public class OpenSubstitutionsCallback implements IHotkeyCallback {
 			InfoUtils.showGuiOrInGameMessage(MessageType.WARNING,
 					"logisticmatica.message.substitutions.no_focus");
 
-			GuiFocusPicker picker = new GuiFocusPicker();
+			GuiProjects picker = new GuiProjects();
 			picker.setParent(GuiUtils.getCurrentScreen());
 			GuiBase.openGui(picker);
 			return true;

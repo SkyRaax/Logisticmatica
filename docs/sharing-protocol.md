@@ -1,4 +1,4 @@
-# Logisticmatica sharing protocol v3
+# Logisticmatica sharing protocol v4
 
 Logisticmatica uses a server-authoritative Fabric play protocol. The server owns project membership,
 permissions, placement transforms, schematic versions, substitutions and tracked-container state.
@@ -16,18 +16,19 @@ The payload identifiers are `logisticmatica:sharing_c2s_v1` and
 `logisticmatica:sharing_s2c_v1`. Fabric's large-payload registration is used with a 36 MiB envelope
 limit; a compressed schematic itself is limited to 32 MiB. Strings and collection sizes are bounded
 before allocation.
-Server state is capped at 256 projects, 256 non-owner members per project and 2,048 tracked
-containers globally. A container snapshot may contain at most 256 distinct item types. These limits
-keep persisted state, scan work and full project-list responses within the bounded envelope. The
-hard container cap is deliberately retained as an abuse and memory-safety boundary; ordinary
-project uploads no longer have a distance or loaded-chunk restriction.
+Server state is capped at 256 projects, 256 non-owner members per project, 65,536 tracked containers
+per project and 262,144 globally. These high ceilings are abuse and memory-safety boundaries rather
+than ordinary gameplay limits. Container state is no longer embedded in project-directory entries:
+subscribed clients receive snapshots and changes in packets of at most 64 containers, while each
+container snapshot remains limited to 256 distinct item types. Upload-time marks have no distance or
+loaded-chunk restriction.
 
 
 On join, the client sends `HELLO`. The server replies with the protocol version, feature mask,
 maximum schematic size, mod version and a persistent server UUID, then sends the complete project
 directory and online-player directory. The UUID namespaces the client's download cache so different
 servers cannot reuse one another's project files. Projects without `VIEW` expose only directory
-metadata; their hash, file size, substitutions, containers and non-owner member roster are omitted.
+metadata; their hash, file size, substitutions, container counts and non-owner member roster are omitted.
 
 ## Messages
 
@@ -40,17 +41,20 @@ Client to server actions:
 - `DELETE_PROJECT`, `LEAVE_PROJECT`
 - `TOGGLE_CONTAINER`, `REFRESH_CONTAINER`
 - `LIST_PLAYERS`, `SET_PUBLIC_ACCESS`, `REQUEST_ACCESS`, `RESPOND_ACCESS`
+- `SUBSCRIBE_PROJECT`, `UNSUBSCRIBE_PROJECT`
 
 Server to client events:
 
 - `HELLO`, `PROJECTS`, `PROJECT_CHANGED`, `PROJECT_REMOVED`, `PROJECT_DATA`
 - `PLAYERS`
 - translated `NOTICE` and `ERROR` responses with bounded formatting arguments
+- `CONTAINER_SNAPSHOT`, `CONTAINERS_CHANGED`
 
 Project updates carry a monotonically increasing revision. Mutations that could overwrite another
 editor's placement or schematic state include the expected revision; stale writes are rejected and
-the newest project list is returned. Volatile container inventory refreshes do not invalidate that
-editing revision.
+the newest project list is returned. Containers use a separate monotonically increasing revision;
+volatile inventory refreshes therefore do not invalidate placement edits and a missed delta is
+recovered by requesting a fresh chunked snapshot.
 
 ## Permissions
 
@@ -123,8 +127,9 @@ uploader. Loaded positions are canonicalized, validated and given a fresh vanill
 snapshot immediately. Marks in unloaded chunks are registered with an empty server snapshot and
 filled authoritatively as soon as their chunk is naturally loaded. Client-provided cached counts are
 never trusted; duplicates and invalid loaded positions remain local and are reported as a partial
-migration. The 2,048-container per-project and global safety caps remain bounded. Over-limit
-uploads are rejected before project creation and are never silently truncated.
+migration. Container state is streamed separately from directory metadata. The practical ceiling is
+65,536 marks per project and 262,144 globally; bounded snapshot chunks prevent large projects from
+creating one invalid response. Over-limit uploads are rejected before creation and never truncated.
 
 ## Placement and container synchronization
 
@@ -133,24 +138,32 @@ a stable mapping across reconnects. Remote transforms and substitutions are appl
 guard so Litematica events do not bounce the same mutation back to the server. Placements without
 `MOVE` are locked locally, while the server still enforces the permission for every packet.
 After a successful upload, the uploader's existing placement is rebound in place to the returned
-project UUID and authoritative cache file, then focused. The focus picker suppresses the redundant
-bare-schematic row whenever a placement already represents the same schematic object. Accepted
-container marks are promoted to server-owned bindings; marks rejected by the server remain local and
-the client reports a partial migration instead of silently discarding them.
-Persisted local snapshots remain the offline/no-server fallback; a shared binding and its contents
-come from the server for every authorized client.
+project UUID and authoritative cache file, then activated. The unified Projects screen presents each
+server project exactly once beside genuinely local placements and schematics; the source schematic
+behind a rebound placement is not exposed as a duplicate row. The active server project is remembered
+per server and dimension. Activating an unloaded project downloads and focuses it, while deactivating
+only clears Logisticmatica's material and container overlays and leaves other Litematica rendering
+untouched. Accepted container marks are promoted to project-owned bindings; rejected marks remain
+local and are reported as a partial migration. Persisted local snapshots remain the no-server
+fallback. An explicit Export Local Copy action writes an independent, server-named `.litematic` file;
+shared cache files and shared placements cannot be uploaded as new projects implicitly.
 
 For a shared schematic, the normal mark-container hotkey sends a server request instead of creating
 a private client mark. The server canonicalizes double chests, requires the player to be in the same
 dimension and within eight blocks. This proximity check applies only to a new manual mark, not to
-upload-time promotion. The server scans up to 128 registered positions per tick; at the 2,048
-container hard cap every naturally loaded inventory is revisited within 16 ticks. Changed snapshots
-are broadcast to every authorized online client.
+upload-time promotion. Only the active project is subscribed for container data. On subscription the
+server sends a bounded authoritative snapshot, then scans up to 64 registered positions per tick and
+broadcasts changed contents as ordered deltas to subscribed authorized clients. Switching or clearing
+focus unsubscribes and removes that project's projected bindings immediately; returning later starts
+with a current snapshot.
 
 The material list, world highlights, floating content labels and look-at peek follow the explicit
 Logisticmatica focus. Clearing focus hides all of them without deleting server data; removing a
 shared placement also removes its projected server bindings locally until the placement is loaded
 again. The separate container overview screen retains its explicit All/Focused selector.
+Container labels default to one narrow vertical list that grows upward and is clamped to the screen;
+the maximum visible item rows and the former column layout remain configurable.
+
 
 ## Compatibility
 

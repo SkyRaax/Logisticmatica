@@ -28,7 +28,8 @@ class SharedProjectTest {
 		assertTrue(view.pendingInvite());
 		assertEquals(0, view.myPermissions());
 		assertTrue(view.substitutions().isEmpty());
-		assertTrue(view.containers().isEmpty());
+		assertEquals(0, view.containerCount());
+		assertEquals(0L, view.containerRevision());
 		assertEquals(1, view.members().size());
 	}
 
@@ -38,10 +39,14 @@ class SharedProjectTest {
 		SharedProject.ContainerKey key = new SharedProject.ContainerKey("minecraft:overworld", 1, 2, 3);
 		project.putContainer(key, Map.of("minecraft:stone", 1));
 		long revision = project.revision();
+		long containerRevision = project.containerRevision();
 
 		assertTrue(project.refreshContainer(key, Map.of("minecraft:stone", 2)));
 		assertFalse(project.refreshContainer(key, Map.of("minecraft:stone", 2)));
 		assertEquals(revision, project.revision());
+		assertEquals(containerRevision, project.containerRevision());
+		project.commitContainerRefresh();
+		assertEquals(containerRevision + 1, project.containerRevision());
 	}
 
 	@Test
@@ -51,11 +56,11 @@ class SharedProjectTest {
 		SharedProject.ContainerKey key = new SharedProject.ContainerKey("minecraft:overworld", 80, 64, -120);
 		project.putContainer(key, Map.of());
 
-		assertEquals(1, project.viewFor(owner, false).containers().size());
-		assertTrue(project.viewFor(owner, false).containers().getFirst().items().isEmpty());
+		assertEquals(1, project.viewFor(owner, false).containerCount());
+		assertTrue(project.containerSnapshot().getFirst().items().isEmpty());
 		assertTrue(project.refreshContainer(key, Map.of("minecraft:redstone", 64)));
 		assertEquals(Map.of("minecraft:redstone", 64),
-				project.viewFor(owner, false).containers().getFirst().items());
+				project.containerSnapshot().getFirst().items());
 	}
 
 	@Test
@@ -71,7 +76,8 @@ class SharedProjectTest {
 		assertEquals("", outsider.schematicHash());
 		assertEquals(0, outsider.schematicSize());
 		assertTrue(outsider.substitutions().isEmpty());
-		assertTrue(outsider.containers().isEmpty());
+		assertEquals(0, outsider.containerCount());
+		assertEquals(0L, outsider.containerRevision());
 	}
 
 	@Test

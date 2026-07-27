@@ -30,6 +30,7 @@ import fi.dy.masa.litematica.schematic.LitematicaSchematic;
 
 import com.skyraax.logisticmatica.client.config.Configs;
 import com.skyraax.logisticmatica.client.gui.ContainerData;
+import com.skyraax.logisticmatica.client.config.ContainerLabelLayout;
 import com.skyraax.logisticmatica.client.gui.ContainerData.ItemCount;
 import com.skyraax.logisticmatica.client.gui.ContainerData.Snapshot;
 
@@ -44,8 +45,7 @@ public class ContainerLabelRenderer implements IRenderer {
 	private static final double LABEL_DISTANCE = 48.0;
 	private static final double LABEL_DISTANCE_SQ = LABEL_DISTANCE * LABEL_DISTANCE;
 	private static final int MAX_LABELS = 12;
-	private static final int MAX_ITEMS = 30;
-	private static final int ROWS_PER_COLUMN = 10;
+	private static final int COLUMN_ROWS = 10;
 
 	private static final int ROW_HEIGHT = 18;
 	private static final int ICON_GAP = 20;
@@ -122,9 +122,9 @@ public class ContainerLabelRenderer implements IRenderer {
 			float distance = (float) Math.sqrt(distanceSq(pos, eye));
 			float unitPixels = Math.abs(this.projMatrix.m11()) * scaledH * 0.5f
 					/ Math.max(0.25f, distance);
-			float scale = Math.max(0.02f, unitPixels * PANEL_WORLD_SCALE);
+			float scale = Math.min(1.0f, Math.max(0.02f, unitPixels * PANEL_WORLD_SCALE));
 
-			drawPanel(ctx, font, screen[0], screen[1], snapshot, scale,
+			drawPanel(ctx, font, screen[0], screen[1], scaledW, scaledH, snapshot, scale,
 					schematic.getMetadata().getName(), SchematicColors.argb(snapshot.schematicKey()));
 
 			if (++shown >= MAX_LABELS) {
@@ -161,12 +161,16 @@ public class ContainerLabelRenderer implements IRenderer {
 				&& !ContainerBlocks.blocks(mc.level, pos).contains(hit.getBlockPos());
 	}
 
-	private static void drawPanel(GuiContext ctx, Font font, float sx, float sy, Snapshot snapshot,
+	private static void drawPanel(GuiContext ctx, Font font, float sx, float sy, int screenWidth,
+			int screenHeight, Snapshot snapshot,
 			float scale, String header, int headerColor) {
 		List<ItemCount> items = snapshot.items();
-		int shown = Math.min(MAX_ITEMS, items.size());
-		int columns = (shown + ROWS_PER_COLUMN - 1) / ROWS_PER_COLUMN;
-		int rowsTall = Math.min(shown, ROWS_PER_COLUMN);
+		int shown = Math.min(Configs.Hud.LABEL_MAX_ITEMS.getIntegerValue(), items.size());
+		boolean vertical = Configs.Hud.LABEL_LAYOUT.getOptionListValue() == ContainerLabelLayout.VERTICAL;
+		int rowsPerColumn = vertical ? Math.max(1, shown) : COLUMN_ROWS;
+		int columns = Math.max(1, (shown + rowsPerColumn - 1) / rowsPerColumn);
+		int rowsTall = Math.min(shown, rowsPerColumn);
+		String displayHeader = items.size() > shown ? header + " (+" + (items.size() - shown) + ")" : header;
 
 		int maxNameW = 0;
 		for (int i = 0; i < shown; i++) {
@@ -175,11 +179,13 @@ public class ContainerLabelRenderer implements IRenderer {
 
 		int headerHeight = font.lineHeight + 3;
 		int colWidth = ICON_GAP + maxNameW + COL_GAP;
-		int totalW = Math.max(columns * colWidth - COL_GAP, font.width(header)) + PAD * 2;
+		int totalW = Math.max(columns * colWidth - COL_GAP, font.width(displayHeader)) + PAD * 2;
 		int totalH = headerHeight + rowsTall * ROW_HEIGHT + PAD * 2;
 
-		float panelLeft = sx - (totalW * scale) / 2.0f;
-		float panelTop = sy - totalH * scale;
+		float scaledPanelWidth = totalW * scale;
+		float scaledPanelHeight = totalH * scale;
+		float panelLeft = clamp(sx - scaledPanelWidth / 2.0f, 2.0f, screenWidth - scaledPanelWidth - 2.0f);
+		float panelTop = clamp(sy - scaledPanelHeight, 2.0f, screenHeight - scaledPanelHeight - 2.0f);
 
 		int textColor = Configs.Colors.TEXT.getIntegerValue();
 
@@ -190,11 +196,11 @@ public class ContainerLabelRenderer implements IRenderer {
 		ctx.fill(0, 0, totalW, totalH, Configs.Colors.BACKGROUND.getIntegerValue());
 
 		// Header: the schematic name in the schematic's own colour, so it is obvious what the container is for.
-		ctx.drawString(font, header, PAD, PAD, headerColor, true);
+		ctx.drawString(font, displayHeader, PAD, PAD, headerColor, true);
 
 		for (int i = 0; i < shown; i++) {
-			int col = i / ROWS_PER_COLUMN;
-			int row = i % ROWS_PER_COLUMN;
+			int col = i / rowsPerColumn;
+			int row = i % rowsPerColumn;
 			int x = PAD + col * colWidth;
 			int y = PAD + headerHeight + row * ROW_HEIGHT;
 
@@ -217,4 +223,9 @@ public class ContainerLabelRenderer implements IRenderer {
 
 		return dx * dx + dy * dy + dz * dz;
 	}
+
+	private static float clamp(float value, float minimum, float maximum) {
+		return maximum < minimum ? minimum : Math.max(minimum, Math.min(maximum, value));
+	}
+
 }

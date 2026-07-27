@@ -95,6 +95,7 @@ public class GuiSharedProjectDetails extends GuiBase implements SharingRefreshab
 			y += 24;
 
 			x = this.addAction(12, y, "download", Action.DOWNLOAD, true);
+			x = this.addAction(x, y, "local_copy", Action.LOCAL_COPY, true);
 			this.addAction(x, y, "replace", Action.REPLACE,
 					project.can(SharePermission.UPDATE_SCHEMATIC));
 			y += 24;
@@ -106,6 +107,8 @@ public class GuiSharedProjectDetails extends GuiBase implements SharingRefreshab
 							: "logisticmatica.gui.share.status.placement_read_only.description"));
 			y = this.addWrappedLabel(16, y, textWidth,
 					StringUtils.translate("logisticmatica.gui.share.download.description"));
+			y = this.addWrappedLabel(16, y, textWidth,
+					StringUtils.translate("logisticmatica.gui.share.local_copy.description"));
 			y = this.addWrappedLabel(16, y, textWidth,
 					StringUtils.translate("logisticmatica.gui.share.replace.description"));
 		} else {
@@ -318,7 +321,7 @@ public class GuiSharedProjectDetails extends GuiBase implements SharingRefreshab
 	}
 
 	private enum Action {
-		DOWNLOAD_FOCUS, FOCUS, OPEN_PLACEMENT, DOWNLOAD, REPLACE, HELP, ACCEPT, DECLINE, PUBLIC_ACCESS,
+		DOWNLOAD_FOCUS, FOCUS, OPEN_PLACEMENT, DOWNLOAD, LOCAL_COPY, REPLACE, HELP, ACCEPT, DECLINE, PUBLIC_ACCESS,
 		REQUEST_ACCESS, CANCEL_REQUEST, CHOOSE_PLAYER,
 		MEMBER_ROLE, APPROVE_ACCESS, DECLINE_ACCESS, REMOVE_MEMBER, DELETE, LEAVE, BACK
 	}
@@ -338,6 +341,7 @@ public class GuiSharedProjectDetails extends GuiBase implements SharingRefreshab
 					}
 				}
 				case DOWNLOAD -> this.gui.sharing.download(this.gui.projectId);
+				case LOCAL_COPY -> this.gui.sharing.exportLocalCopy(this.gui.projectId);
 				case REPLACE -> {
 					GuiPlacementPicker picker = new GuiPlacementPicker(
 							GuiPlacementPicker.Mode.REPLACE, this.gui.projectId);

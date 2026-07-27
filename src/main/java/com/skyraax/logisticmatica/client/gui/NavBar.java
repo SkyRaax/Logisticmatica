@@ -32,8 +32,11 @@ public final class NavBar {
 	public static final int HEIGHT = 18;
 
 	public enum Tab {
-		MENU, MATERIALS, FOCUS, CONTAINERS, SUBSTITUTIONS, SHARING, SETTINGS
+		MENU, MATERIALS, PROJECTS, CONTAINERS, SUBSTITUTIONS, SETTINGS, FOCUS, SHARING
 	}
+	private static final Tab[] VISIBLE_TABS = {
+		Tab.MENU, Tab.MATERIALS, Tab.PROJECTS, Tab.CONTAINERS, Tab.SUBSTITUTIONS, Tab.SETTINGS
+	};
 
 	private NavBar() {
 	}
@@ -43,7 +46,7 @@ public final class NavBar {
 		int x = 12;
 		Screen hub = gui.getParent();
 
-		for (Tab tab : Tab.values()) {
+		for (Tab tab : VISIBLE_TABS) {
 			String label = StringUtils.translate("logisticmatica.gui.tab." + tab.name().toLowerCase(Locale.ROOT));
 			int width = gui.getStringWidth(label) + 10;
 
@@ -68,22 +71,21 @@ public final class NavBar {
 				case MENU -> GuiBase.openGui(this.hub instanceof GuiHub ? this.hub : new GuiHub());
 				case MATERIALS -> {
 					MaterialListBase materialList = DataManager.getMaterialList();
-					openChild(materialList != null ? new GuiMaterialListView(materialList) : new GuiFocusPicker(), this.hub);
+					openChild(materialList != null ? new GuiMaterialListView(materialList) : new GuiProjects(), this.hub);
 				}
-				case FOCUS -> openChild(new GuiFocusPicker(), this.hub);
+				case PROJECTS, FOCUS, SHARING -> openChild(new GuiProjects(), this.hub);
 				case CONTAINERS -> openChild(new GuiContainerOverview(), this.hub);
 				case SUBSTITUTIONS -> {
 					LitematicaSchematic schematic = FocusState.getSchematic();
 
 					if (schematic == null) {
 						InfoUtils.showGuiOrInGameMessage(MessageType.WARNING, "logisticmatica.message.substitutions.no_focus");
-						openChild(new GuiFocusPicker(), this.hub);
+						openChild(new GuiProjects(), this.hub);
 					} else {
 						openChild(new GuiSubstitutions(schematic), this.hub);
 					}
 				}
 				case SETTINGS -> openChild(new GuiConfigs(), this.hub);
-				case SHARING -> openChild(new GuiSharing(), this.hub);
 			}
 		}
 	}

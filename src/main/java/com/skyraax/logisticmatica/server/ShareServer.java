@@ -3,6 +3,8 @@ package com.skyraax.logisticmatica.server;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -19,6 +21,7 @@ import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.Rotation;
 
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 
@@ -31,6 +34,9 @@ import com.skyraax.logisticmatica.share.ShareAccess;
 import com.skyraax.logisticmatica.share.SharePermission;
 import com.skyraax.logisticmatica.share.ShareProtocol;
 import com.skyraax.logisticmatica.share.ShareWire;
+import com.skyraax.logisticmatica.share.SharedContainerDelta;
+import com.skyraax.logisticmatica.share.SharedContainerKey;
+import com.skyraax.logisticmatica.share.SharedContainerSnapshot;
 import com.skyraax.logisticmatica.share.SharedContainerView;
 import com.skyraax.logisticmatica.share.SharedPlayerView;
 import com.skyraax.logisticmatica.share.SharedProjectView;
@@ -39,11 +45,15 @@ import com.skyraax.logisticmatica.share.SharedProjectView;
 public final class ShareServer {
 	private static final ShareServer INSTANCE = new ShareServer();
 	private static final String ADMIN_PERMISSION = Logisticmatica.MOD_ID + ".admin";
-	private static final int CONTAINER_SCANS_PER_TICK = 128;
+	private static final int CONTAINER_SCANS_PER_TICK = ShareProtocol.MAX_CONTAINER_CHANGES_PER_PACKET;
 	private static final double CONTAINER_BIND_DISTANCE_SQ = 64.0;
 
 	private final ShareStore store = new ShareStore();
+	private record ContainerScanTarget(SharedProject project, SharedProject.ContainerKey key) {}
+	private List<ContainerScanTarget> containerScanOrder = List.of();
+	private boolean containerScanDirty = true;
 	private int containerScanCursor;
+	private final Map<UUID, Set<UUID>> subscriptions = new HashMap<>();
 	@Nullable private MinecraftServer server;
 
 	private ShareServer() {
@@ -53,6 +63,8 @@ public final class ShareServer {
 		ServerPlayNetworking.registerGlobalReceiver(ServerboundSharePayload.TYPE, (payload, context) ->
 				context.server().execute(() -> INSTANCE.handle(payload, context.player())));
 		ServerLifecycleEvents.SERVER_STARTED.register(INSTANCE::onServerStarted);
+		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) ->
+				INSTANCE.subscriptions.remove(handler.getPlayer().getUUID()));
 		ServerLifecycleEvents.SERVER_STOPPING.register(INSTANCE::onServerStopping);
 		ServerTickEvents.END_SERVER_TICK.register(INSTANCE::onServerTick);
 	}
@@ -61,11 +73,16 @@ public final class ShareServer {
 		this.server = server;
 		this.store.start(server);
 		this.containerScanCursor = 0;
+		this.subscriptions.clear();
+		this.containerScanDirty = true;
 	}
 
 	private void onServerStopping(MinecraftServer server) {
 		this.store.stop();
 		this.server = null;
+		this.containerScanOrder = List.of();
+		this.containerScanDirty = true;
+		this.subscriptions.clear();
 	}
 
 	private void handle(ServerboundSharePayload payload, ServerPlayer player) {
@@ -95,6 +112,8 @@ public final class ShareServer {
 				case SET_PUBLIC_ACCESS -> this.handlePublicAccess(player, payload);
 				case REQUEST_ACCESS -> this.handleAccessRequest(player, payload);
 				case RESPOND_ACCESS -> this.handleAccessResponse(player, payload);
+				case SUBSCRIBE_PROJECT -> this.handleSubscribe(player, payload);
+				case UNSUBSCRIBE_PROJECT -> this.handleUnsubscribe(player, payload);
 			}
 		} catch (IOException | IllegalArgumentException e) {
 			Logisticmatica.LOGGER.warn("[{}] Rejected sharing action {} from {}: {}",
@@ -157,6 +176,7 @@ public final class ShareServer {
 				name, dimension, x, y, z, rotation, mirror, hash, schematic.length);
 		this.importContainers(project, level, player, localContainers);
 		this.store.put(project);
+		this.containerScanDirty = true;
 		this.store.save();
 		this.sendProjectChanged(project);
 		this.sendProject(player, project, payload.requestId());
@@ -169,11 +189,12 @@ public final class ShareServer {
 	 */
 	private void importContainers(SharedProject project, ServerLevel level, ServerPlayer player,
 			List<SharedContainerView> containers) {
+		int existingContainers = this.totalContainerCount();
 		for (SharedContainerView imported : containers) {
 			if (!project.dimension().equals(imported.dimension())
 					|| player.level() != level
 					|| project.containers().size() >= ShareProtocol.MAX_CONTAINERS_PER_PROJECT
-					|| this.totalContainerCount() + project.containers().size()
+					|| existingContainers + project.containers().size()
 							>= ShareProtocol.MAX_CONTAINERS_GLOBAL) {
 				continue;
 			}
@@ -217,6 +238,28 @@ public final class ShareServer {
 		});
 		this.send(player, ClientboundSharePayload.of(ShareProtocol.ClientboundEvent.PROJECT_DATA,
 				payload.requestId(), body));
+	}
+
+	private void handleSubscribe(ServerPlayer player, ServerboundSharePayload payload) throws IOException {
+		UUID projectId = readProjectId(payload.body());
+		SharedProject project = this.requireProject(player, projectId, SharePermission.VIEW, payload.requestId());
+		if (project == null) {
+			return;
+		}
+		this.subscriptions.computeIfAbsent(player.getUUID(), ignored -> new LinkedHashSet<>()).add(projectId);
+		this.sendContainerSnapshot(player, project, payload.requestId());
+	}
+
+	private void handleUnsubscribe(ServerPlayer player, ServerboundSharePayload payload) throws IOException {
+		UUID projectId = readProjectId(payload.body());
+		Set<UUID> projects = this.subscriptions.get(player.getUUID());
+		if (projects == null) {
+			return;
+		}
+		projects.remove(projectId);
+		if (projects.isEmpty()) {
+			this.subscriptions.remove(player.getUUID());
+		}
 	}
 
 	private void handleTransform(ServerPlayer player, ServerboundSharePayload payload) throws IOException {
@@ -438,6 +481,8 @@ public final class ShareServer {
 			return;
 		}
 		this.store.remove(projectId);
+		this.containerScanDirty = true;
+		this.subscriptions.values().forEach(projects -> projects.remove(projectId));
 		this.store.save();
 		for (ServerPlayer online : player.level().getServer().getPlayerList().getPlayers()) {
 			this.sendRemoved(online, projectId);
@@ -503,6 +548,11 @@ public final class ShareServer {
 			nowMarked = true;
 		}
 		this.changed(project);
+		if (nowMarked) {
+			this.sendContainerDelta(project, List.of(project.containerView(key)), List.of());
+		} else {
+			this.sendContainerDelta(project, List.of(), List.of(wireKey(key)));
+		}
 		this.sendNotice(player, payload.requestId(),
 				nowMarked ? "logisticmatica.message.mark.marked" : "logisticmatica.message.mark.unmarked");
 	}
@@ -523,38 +573,55 @@ public final class ShareServer {
 				new BlockPos(key.x(), key.y(), key.z())) : null;
 		if (snapshot != null && snapshot.size() <= ShareProtocol.MAX_ITEM_TYPES_PER_CONTAINER
 				&& project.refreshContainer(key, snapshot)) {
-			this.changed(project);
+			project.commitContainerRefresh();
+			this.store.save();
+			this.sendContainerDelta(project, List.of(project.containerView(key)), List.of());
 		}
 	}
 
 	private void onServerTick(MinecraftServer server) {
-		int total = this.totalContainerCount();
+		if (this.containerScanDirty) this.rebuildContainerScanOrder();
+		int total = this.containerScanOrder.size();
 		if (total == 0) {
 			this.containerScanCursor = 0;
 			return;
 		}
 		int start = Math.floorMod(this.containerScanCursor, total);
 		int budget = Math.min(CONTAINER_SCANS_PER_TICK, total);
-		int index = 0;
-		Set<SharedProject> changed = new LinkedHashSet<>();
-		for (SharedProject project : this.store.projects()) {
-			for (SharedProject.ContainerKey key : project.containers().keySet()) {
-				int relative = Math.floorMod(index++ - start, total);
-				if (relative >= budget) continue;
-				ServerLevel level = ServerContainerAccess.level(server, key.dimension());
-				Map<String, Integer> snapshot = level != null ? ServerContainerAccess.snapshot(level,
-						new BlockPos(key.x(), key.y(), key.z())) : null;
-				if (snapshot != null && snapshot.size() <= ShareProtocol.MAX_ITEM_TYPES_PER_CONTAINER
-						&& project.refreshContainer(key, snapshot)) {
-					changed.add(project);
-				}
+		Map<SharedProject, List<SharedProject.ContainerKey>> changed = new LinkedHashMap<>();
+		for (int offset = 0; offset < budget; offset++) {
+			ContainerScanTarget target = this.containerScanOrder.get((start + offset) % total);
+			SharedProject project = target.project();
+			SharedProject.ContainerKey key = target.key();
+			ServerLevel level = ServerContainerAccess.level(server, key.dimension());
+			Map<String, Integer> snapshot = level != null ? ServerContainerAccess.snapshot(level,
+					new BlockPos(key.x(), key.y(), key.z())) : null;
+			if (snapshot != null && snapshot.size() <= ShareProtocol.MAX_ITEM_TYPES_PER_CONTAINER
+					&& project.refreshContainer(key, snapshot)) {
+				changed.computeIfAbsent(project, ignored -> new ArrayList<>()).add(key);
 			}
 		}
 		this.containerScanCursor = (start + budget) % total;
 		if (!changed.isEmpty()) {
+			for (Map.Entry<SharedProject, List<SharedProject.ContainerKey>> entry : changed.entrySet()) {
+				entry.getKey().commitContainerRefresh();
+			}
 			this.store.save();
-			changed.forEach(this::sendProjectChanged);
+			changed.forEach((project, keys) -> this.sendContainerDelta(project,
+					keys.stream().map(project::containerView).toList(), List.of()));
 		}
+	}
+
+	private void rebuildContainerScanOrder() {
+		List<ContainerScanTarget> order = new ArrayList<>(this.totalContainerCount());
+		for (SharedProject project : this.store.projects()) {
+			for (SharedProject.ContainerKey key : project.containers().keySet()) {
+				order.add(new ContainerScanTarget(project, key));
+			}
+		}
+		this.containerScanOrder = List.copyOf(order);
+		this.containerScanDirty = false;
+		if (this.containerScanCursor >= this.containerScanOrder.size()) this.containerScanCursor = 0;
 	}
 
 	private int totalContainerCount() {
@@ -563,6 +630,7 @@ public final class ShareServer {
 
 	private void changed(SharedProject project) {
 		this.store.save();
+		this.containerScanDirty = true;
 		this.sendProjectChanged(project);
 	}
 
@@ -605,6 +673,54 @@ public final class ShareServer {
 				requestId, body));
 	}
 
+
+	private void sendContainerSnapshot(ServerPlayer player, SharedProject project, UUID requestId) {
+		List<SharedContainerView> containers = project.containerSnapshot();
+		int packetSize = ShareProtocol.MAX_CONTAINER_CHANGES_PER_PACKET;
+		int chunks = Math.max(1, (containers.size() + packetSize - 1) / packetSize);
+		for (int chunk = 0; chunk < chunks; chunk++) {
+			int from = chunk * packetSize;
+			int to = Math.min(containers.size(), from + packetSize);
+			List<SharedContainerView> values = from < to ? containers.subList(from, to) : List.of();
+			SharedContainerSnapshot snapshot = new SharedContainerSnapshot(project.id(),
+					project.containerRevision(), chunk == 0, chunk == chunks - 1, values);
+			this.send(player, ClientboundSharePayload.of(ShareProtocol.ClientboundEvent.CONTAINER_SNAPSHOT,
+					requestId, ShareWire.encodeContainerSnapshot(snapshot)));
+		}
+	}
+
+	private void sendContainerDelta(SharedProject project, List<SharedContainerView> upserts,
+			List<SharedContainerKey> removals) {
+		if (upserts.isEmpty() && removals.isEmpty()) {
+			return;
+		}
+		MinecraftServer server = this.server;
+		if (upserts.size() > ShareProtocol.MAX_CONTAINER_CHANGES_PER_PACKET
+				|| removals.size() > ShareProtocol.MAX_CONTAINER_CHANGES_PER_PACKET) {
+			throw new IllegalArgumentException("Container delta exceeds packet bound");
+		}
+		if (server == null) {
+			return;
+		}
+		SharedContainerDelta delta = new SharedContainerDelta(project.id(), project.containerRevision(), upserts, removals);
+		byte[] body = ShareWire.encodeContainerDelta(delta);
+		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+			Set<UUID> projects = this.subscriptions.get(player.getUUID());
+			if (projects == null || !projects.contains(project.id())) {
+				continue;
+			}
+			if (!this.isAdministrator(player) && !project.can(player.getUUID(), SharePermission.VIEW)) {
+				projects.remove(project.id());
+				continue;
+			}
+			this.send(player, ClientboundSharePayload.of(ShareProtocol.ClientboundEvent.CONTAINERS_CHANGED,
+					UUID.randomUUID(), body));
+		}
+	}
+
+	private static SharedContainerKey wireKey(SharedProject.ContainerKey key) {
+		return new SharedContainerKey(key.dimension(), key.x(), key.y(), key.z());
+	}
 
 	@Nullable
 	private SharedProject requireProject(ServerPlayer player, UUID id, SharePermission permission, UUID requestId) {
