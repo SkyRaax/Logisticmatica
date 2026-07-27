@@ -8,7 +8,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import net.minecraft.client.gui.screens.Screen;
 
 import fi.dy.masa.malilib.gui.GuiBase;
-import fi.dy.masa.malilib.gui.button.ButtonGeneric;
 import fi.dy.masa.malilib.util.StringUtils;
 
 import fi.dy.masa.litematica.gui.GuiMainMenu;
@@ -16,6 +15,7 @@ import fi.dy.masa.litematica.gui.GuiMainMenu.ButtonListenerChangeMenu.ButtonType
 import fi.dy.masa.litematica.selection.SelectionMode;
 
 import com.skyraax.logisticmatica.client.LitematicaMenuButtonListener;
+import com.skyraax.logisticmatica.client.gui.ButtonLogisticmaticaMenu;
 
 /**
  * Adds a "Logisticmatica" button to Litematica's main menu, in the gap the layout leaves in the
@@ -45,7 +45,7 @@ public abstract class MixinGuiMainMenu {
 		int x = 12 + buttonWidth + 20;
 		int y = 52;
 
-		ButtonGeneric button = new ButtonGeneric(x, y, buttonWidth, 20,
+		ButtonLogisticmaticaMenu button = new ButtonLogisticmaticaMenu(x, y, buttonWidth, 20,
 				StringUtils.translate("logisticmatica.gui.button.litematica_menu"));
 		gui.addButton(button, new LitematicaMenuButtonListener((Screen) (Object) this));
 	}

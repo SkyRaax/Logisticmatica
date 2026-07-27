@@ -60,8 +60,11 @@ placement sharing with live sync and granular permissions.
    permission administration or deletion.
 7. Moving, rotating or mirroring a shared placement is broadcast live. The active project's marked
    containers are loaded from an authoritative chunked server snapshot and then kept current through
-   live deltas. Deactivating hides Logisticmatica's list, highlights, labels and peek without deleting
-   the project or hiding unrelated Litematica placements.
+   live deltas. **Unfocus Project** hides Logisticmatica's list, highlights, labels and peek without
+   deleting the project or hiding unrelated Litematica placements.
+8. **End Sharing** first refreshes the owner's authoritative container snapshot, removes the server
+   project for every participant, and detaches the owner's existing placement back to a local
+   schematic. Its placement state and container marks remain locally usable.
 
 If the client joins a server without Logisticmatica, it displays a warning and disables only server
 actions in Projects; all local material, container and substitution features continue to work.

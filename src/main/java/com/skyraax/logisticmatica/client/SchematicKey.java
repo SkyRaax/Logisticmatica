@@ -4,9 +4,15 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.UUID;
+
+import javax.annotation.Nullable;
 
 import fi.dy.masa.litematica.data.SchematicHolder;
 import fi.dy.masa.litematica.schematic.LitematicaSchematic;
+
+import com.skyraax.logisticmatica.client.share.ClientShareManager;
+import com.skyraax.logisticmatica.share.SharedProjectView;
 
 /**
  * A stable string key identifying a schematic across sessions — its file path, or its name for
@@ -18,7 +24,12 @@ public final class SchematicKey {
 
 	public static String of(LitematicaSchematic schematic) {
 		Path file = schematic.getFile();
-		return file != null ? normalize(file) : "name:" + schematic.getMetadata().getName();
+		return file != null ? of(file) : "name:" + schematic.getMetadata().getName();
+	}
+
+	/** Stable key for a schematic file that may not currently be loaded. */
+	public static String of(Path file) {
+		return normalize(file);
 	}
 
 	/**
@@ -60,8 +71,14 @@ public final class SchematicKey {
 		return map;
 	}
 
-	/** Human-readable schematic name for container overview rows and filters. */
+	/** Human-readable schematic or server-project name for container overview rows and filters. */
 	public static String displayName(String key) {
+		UUID projectId = projectId(key);
+		if (projectId != null) {
+			SharedProjectView project = ClientShareManager.getInstance().project(projectId);
+			if (project != null) return project.name();
+		}
+
 		LitematicaSchematic loaded = null;
 		for (LitematicaSchematic schematic : SchematicHolder.getInstance().getAllSchematics()) {
 			if (of(schematic).equals(key)) { loaded = schematic; break; }
@@ -73,6 +90,17 @@ public final class SchematicKey {
 			return file != null ? file.toString() : key;
 		} catch (RuntimeException ignored) {
 			return key;
+		}
+	}
+
+	/** Extracts the authoritative project UUID from an internal shared-container key. */
+	@Nullable
+	public static UUID projectId(@Nullable String key) {
+		if (key == null || !key.startsWith("project:")) return null;
+		try {
+			return UUID.fromString(key.substring("project:".length()));
+		} catch (IllegalArgumentException ignored) {
+			return null;
 		}
 	}
 }

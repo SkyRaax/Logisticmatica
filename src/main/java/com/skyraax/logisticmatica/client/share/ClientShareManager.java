@@ -86,6 +86,7 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 	private final Map<UUID, SchematicPlacement> replacements = new HashMap<>();
 	private final Set<UUID> focusAfterDownload = new HashSet<>();
 	private final Set<UUID> exportAfterDownload = new HashSet<>();
+	private final Set<UUID> pendingEndSharing = new HashSet<>();
 	private boolean serverAvailable;
 	@Nullable private UUID serverId;
 	private boolean applyingRemote;
@@ -97,6 +98,7 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 
 	private record PendingCreate(SchematicPlacement placement, byte[] schematicBytes,
 			Set<BlockPos> localContainers) {}
+	private record OwnerDetachment(String previousKey, String localKey) {}
 	private record PendingContainerPromotion(Set<BlockPos> remaining, int total) {
 		PendingContainerPromotion(Set<BlockPos> positions) {
 			this(new HashSet<>(positions), positions.size());
@@ -206,6 +208,7 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 		this.focusAfterDownload.clear();
 		this.snapshotPromotions.clear();
 		this.exportAfterDownload.clear();
+		this.pendingEndSharing.clear();
 		this.refreshScreen();
 	}
 
@@ -294,7 +297,8 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 		if (promoted) this.snapshotPromotions.add(project.id());
 		if (!snapshot.complete()) return;
 		this.containerRevisions.put(project.id(), snapshot.revision());
-		if (this.snapshotPromotions.remove(project.id())) tracker.save();
+		this.snapshotPromotions.remove(project.id());
+		tracker.save();
 		PendingContainerPromotion expected = this.pendingContainerPromotions.remove(project.id());
 		if (expected != null && expected.total() > 0) {
 			int accepted = expected.accepted();
@@ -302,6 +306,9 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 					accepted == expected.total() ? "logisticmatica.share.notice.containers_migrated"
 							: "logisticmatica.share.notice.containers_migrated_partial",
 					accepted, expected.total());
+		}
+		if (this.pendingEndSharing.remove(project.id())) {
+			this.sendProjectId(ShareProtocol.ServerboundAction.DELETE_PROJECT, project.id());
 		}
 	}
 
@@ -344,6 +351,7 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 				Files.createDirectories(file.getParent());
 				Files.write(file, pending.schematicBytes());
 				SchematicPlacement created = pending.placement();
+				this.rememberOwnerSource(project.id(), created.getSchematic().getFile());
 				if (!(created instanceof ISharedPlacement shared)) {
 					throw new IllegalStateException("SchematicPlacement sharing mixin is unavailable");
 				}
@@ -424,16 +432,41 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 		ShareWire.Reader r = ShareWire.decode(body);
 		UUID id = r.readUuid();
 		r.requireFinished();
-		this.projects.remove(id);
+		SharedProjectView removed = this.projects.remove(id);
+		Minecraft mc = Minecraft.getInstance();
+		boolean owner = removed != null && mc.player != null && removed.ownerId().equals(mc.player.getUUID());
 		this.subscriptions.remove(id);
 		this.containerRevisions.remove(id);
-		ContainerTracker.getInstance().clearServerBindings(id);
+		this.pendingEndSharing.remove(id);
 		this.focusAfterDownload.remove(id);
 		SchematicPlacement placement = this.placements.remove(id);
-		if (placement != null) {
-			this.applyingRemote = true;
-			try { DataManager.getSchematicPlacementManager().removeSchematicPlacement(placement); }
-			finally { this.applyingRemote = false; }
+		ContainerTracker tracker = ContainerTracker.getInstance();
+		if (owner && placement != null) {
+			boolean focused = FocusState.getPlacement() == placement;
+			try {
+				OwnerDetachment detached = this.detachOwnerPlacement(removed, placement);
+				tracker.transferServerBindingsToLocal(id, detached.localKey());
+				tracker.migrateLocalBindings(detached.previousKey(), detached.localKey());
+				if (focused) FocusController.focusPlacement(placement);
+				InfoUtils.showGuiOrInGameMessage(MessageType.SUCCESS,
+						"logisticmatica.share.notice.sharing_ended_local");
+			} catch (IOException | RuntimeException e) {
+				Logisticmatica.LOGGER.error("[{}] Could not detach the ended server project locally",
+						Logisticmatica.MOD_NAME, e);
+				tracker.clearServerBindings(id);
+				if (focused) FocusController.focusPlacement(placement);
+				InfoUtils.showGuiOrInGameMessage(MessageType.ERROR,
+						"logisticmatica.share.error.end_sharing_local");
+			} finally {
+				this.forgetOwnerSource(id);
+			}
+		} else {
+			tracker.clearServerBindings(id);
+			if (placement != null) {
+				this.applyingRemote = true;
+				try { DataManager.getSchematicPlacementManager().removeSchematicPlacement(placement); }
+				finally { this.applyingRemote = false; }
+			}
 		}
 		this.syncContainers();
 	}
@@ -825,7 +858,20 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 		this.send(ServerboundSharePayload.of(ShareProtocol.ServerboundAction.REMOVE_MEMBER, body));
 	}
 
-	public void delete(UUID projectId) { this.sendProjectId(ShareProtocol.ServerboundAction.DELETE_PROJECT, projectId); }
+	public void endSharing(UUID projectId) {
+		SharedProjectView project = this.projects.get(projectId);
+		Minecraft mc = Minecraft.getInstance();
+		boolean owner = project != null && mc.player != null && project.ownerId().equals(mc.player.getUUID());
+		if (!owner || !this.placements.containsKey(projectId)) {
+			this.sendProjectId(ShareProtocol.ServerboundAction.DELETE_PROJECT, projectId);
+			return;
+		}
+		if (!this.pendingEndSharing.add(projectId)) return;
+		this.subscriptions.add(projectId);
+		this.requestContainerSnapshot(projectId);
+		InfoUtils.showGuiOrInGameMessage(MessageType.INFO,
+				"logisticmatica.share.notice.preparing_end_sharing");
+	}
 	public void leave(UUID projectId) { this.sendProjectId(ShareProtocol.ServerboundAction.LEAVE_PROJECT, projectId); }
 
 	/** Returns true when the schematic is shared, even when the mutation is denied locally. */
@@ -1032,6 +1078,90 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 		String dimension = sanitizeFileComponent(mc.level.dimension().identifier().toString());
 		return this.sharedDirectory().resolve("active-" + dimension + ".txt");
 	}
+
+	private OwnerDetachment detachOwnerPlacement(SharedProjectView project, SchematicPlacement placement)
+			throws IOException {
+		if (!(placement instanceof ISharedPlacement shared)) {
+			throw new IOException("SchematicPlacement sharing mixin is unavailable");
+		}
+		Path remembered = this.readOwnerSource(project.id());
+		String previousKey = remembered != null ? SchematicKey.of(remembered)
+				: SchematicKey.of(placement.getSchematic());
+		Path localFile = null;
+		if (remembered != null && Files.isRegularFile(remembered)
+				&& project.schematicHash().equals(sha256(Files.readAllBytes(remembered)))) {
+			localFile = remembered;
+		}
+		if (localFile == null) {
+			Path authoritative = placement.getSchematicFile();
+			Path source = authoritative != null && Files.isRegularFile(authoritative)
+					? authoritative : remembered;
+			if (source == null || !Files.isRegularFile(source)) {
+				throw new IOException("No local or cached schematic is available");
+			}
+			localFile = this.createLocalProjectCopy(project, source);
+		}
+
+		LitematicaSchematic localSchematic = placement.getSchematic();
+		Path currentFile = localSchematic.getFile();
+		if (currentFile == null || !currentFile.toAbsolutePath().normalize()
+				.equals(localFile.toAbsolutePath().normalize())) {
+			localSchematic = SchematicHolder.getInstance().getOrLoad(localFile);
+			if (localSchematic == null) throw new IOException("Could not load the detached local schematic");
+		}
+		this.applySubstitutions(project, localSchematic);
+		shared.logisticmatica$detachToLocal(UUID.randomUUID(), localFile, localSchematic);
+		return new OwnerDetachment(previousKey, SchematicKey.of(localSchematic));
+	}
+
+	private Path createLocalProjectCopy(SharedProjectView project, Path source) throws IOException {
+		Path directory = DataManager.getSchematicsBaseDirectory();
+		Files.createDirectories(directory);
+		String baseName = sanitizeFileComponent(project.name()) + " - local";
+		Path target = directory.resolve(baseName + ".litematic");
+		for (int suffix = 2; Files.exists(target); suffix++) {
+			target = directory.resolve(baseName + " (" + suffix + ").litematic");
+		}
+		Files.copy(source, target);
+		return target;
+	}
+
+	private void rememberOwnerSource(UUID projectId, @Nullable Path source) {
+		if (source == null || this.isSharedCacheFile(source)) return;
+		try {
+			Path file = this.ownerSourceFile(projectId);
+			Files.createDirectories(file.getParent());
+			Files.writeString(file, source.toAbsolutePath().normalize().toString());
+		} catch (IOException | RuntimeException e) {
+			Logisticmatica.LOGGER.warn("[{}] Could not remember the local project source",
+					Logisticmatica.MOD_NAME);
+		}
+	}
+
+	@Nullable
+	private Path readOwnerSource(UUID projectId) {
+		Path file = this.ownerSourceFile(projectId);
+		if (!Files.isRegularFile(file)) return null;
+		try {
+			return Path.of(Files.readString(file).strip()).toAbsolutePath().normalize();
+		} catch (IOException | RuntimeException e) {
+			return null;
+		}
+	}
+
+	private void forgetOwnerSource(UUID projectId) {
+		try {
+			Files.deleteIfExists(this.ownerSourceFile(projectId));
+		} catch (IOException e) {
+			Logisticmatica.LOGGER.warn("[{}] Could not remove the local project-source marker",
+					Logisticmatica.MOD_NAME);
+		}
+	}
+
+	private Path ownerSourceFile(UUID projectId) {
+		return this.sharedDirectory().resolve(projectId + ".owner-source");
+	}
+
 	private Path sharedDirectory() {
 
 		String server = this.serverId != null ? this.serverId.toString() : "unknown";

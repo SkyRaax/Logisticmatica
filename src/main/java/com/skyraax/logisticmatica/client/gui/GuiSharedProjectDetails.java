@@ -209,14 +209,26 @@ public class GuiSharedProjectDetails extends GuiBase implements SharingRefreshab
 
 		boolean canDelete = project.can(SharePermission.DELETE);
 		if (canDelete || (project.member() && !owner)) {
-			String destructive = canDelete
-					? StringUtils.translate(this.deleteArmed ? "logisticmatica.gui.share.confirm_delete"
-							: "logisticmatica.gui.share.delete")
-					: StringUtils.translate("logisticmatica.gui.share.leave");
+			String destructive;
+			String description;
+			if (canDelete && owner) {
+				destructive = StringUtils.translate(this.deleteArmed
+						? "logisticmatica.gui.share.confirm_delete" : "logisticmatica.gui.share.delete");
+				description = "logisticmatica.gui.share.end_sharing.description";
+			} else if (canDelete) {
+				destructive = StringUtils.translate(this.deleteArmed
+						? "logisticmatica.gui.share.confirm_delete_admin"
+						: "logisticmatica.gui.share.delete_admin");
+				description = "logisticmatica.gui.share.delete_admin.description";
+			} else {
+				destructive = StringUtils.translate("logisticmatica.gui.share.leave");
+				description = "logisticmatica.gui.share.leave.description";
+			}
 			ButtonGeneric destructiveButton = new ButtonGeneric(12, this.getScreenHeight() - 34,
 					-1, 20, destructive);
+			destructiveButton.setHoverStrings(description);
 			this.addButton(destructiveButton,
-					new Listener(canDelete ? Action.DELETE : Action.LEAVE, this, null));
+					new Listener(canDelete ? Action.END_SHARING : Action.LEAVE, this, null));
 		}
 
 		String back = StringUtils.translate("logisticmatica.gui.button.back");
@@ -323,7 +335,7 @@ public class GuiSharedProjectDetails extends GuiBase implements SharingRefreshab
 	private enum Action {
 		DOWNLOAD_FOCUS, FOCUS, OPEN_PLACEMENT, DOWNLOAD, LOCAL_COPY, REPLACE, HELP, ACCEPT, DECLINE, PUBLIC_ACCESS,
 		REQUEST_ACCESS, CANCEL_REQUEST, CHOOSE_PLAYER,
-		MEMBER_ROLE, APPROVE_ACCESS, DECLINE_ACCESS, REMOVE_MEMBER, DELETE, LEAVE, BACK
+		MEMBER_ROLE, APPROVE_ACCESS, DECLINE_ACCESS, REMOVE_MEMBER, END_SHARING, LEAVE, BACK
 	}
 
 	private record Listener(Action action, GuiSharedProjectDetails gui, @Nullable UUID memberId)
@@ -399,8 +411,8 @@ public class GuiSharedProjectDetails extends GuiBase implements SharingRefreshab
 				case REMOVE_MEMBER -> {
 					if (this.memberId != null) this.gui.sharing.removeMember(this.gui.projectId, this.memberId);
 				}
-				case DELETE -> {
-					if (this.gui.deleteArmed) this.gui.sharing.delete(this.gui.projectId);
+				case END_SHARING -> {
+					if (this.gui.deleteArmed) this.gui.sharing.endSharing(this.gui.projectId);
 					else { this.gui.deleteArmed = true; this.gui.initGui(); }
 				}
 				case LEAVE -> this.gui.sharing.leave(this.gui.projectId);

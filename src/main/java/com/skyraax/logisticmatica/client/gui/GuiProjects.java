@@ -77,11 +77,11 @@ public class GuiProjects extends GuiListBase<GuiProjects.ProjectEntry, GuiProjec
 		this.addTextField(search, new SearchListener(this), TextFieldType.STRING);
 		x += 186;
 
-		ButtonGeneric deactivate = new ButtonGeneric(x, y, -1, 20,
-				StringUtils.translate("logisticmatica.gui.projects.deactivate"));
-		deactivate.setEnabled(FocusState.getSchematic() != null || DataManager.getMaterialList() != null);
-		this.addButton(deactivate, new ActionListener(Action.DEACTIVATE, this));
-		x += deactivate.getWidth() + 4;
+		ButtonGeneric unfocus = new ButtonGeneric(x, y, -1, 20,
+				StringUtils.translate("logisticmatica.gui.projects.unfocus"));
+		unfocus.setEnabled(FocusState.getSchematic() != null || DataManager.getMaterialList() != null);
+		this.addButton(unfocus, new ActionListener(Action.UNFOCUS, this));
+		x += unfocus.getWidth() + 4;
 
 		ButtonGeneric refresh = new ButtonGeneric(x, y, -1, 20,
 				StringUtils.translate("logisticmatica.gui.button.material_list.refresh"));
@@ -126,12 +126,12 @@ public class GuiProjects extends GuiListBase<GuiProjects.ProjectEntry, GuiProjec
 		this.initGui();
 	}
 
-	private enum Action { DEACTIVATE, REFRESH, SHARE, HELP, BACK }
+	private enum Action { UNFOCUS, REFRESH, SHARE, HELP, BACK }
 
 	private record ActionListener(Action action, GuiProjects gui) implements IButtonActionListener {
 		@Override public void actionPerformedWithButton(ButtonBase button, int mouseButton) {
 			switch (this.action) {
-				case DEACTIVATE -> { FocusController.clear(); this.gui.initGui(); }
+				case UNFOCUS -> { FocusController.clear(); this.gui.initGui(); }
 				case REFRESH -> this.gui.sharing.refreshProjects();
 				case SHARE -> {
 					GuiPlacementPicker picker = new GuiPlacementPicker(GuiPlacementPicker.Mode.SHARE, null);

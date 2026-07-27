@@ -141,12 +141,17 @@ After a successful upload, the uploader's existing placement is rebound in place
 project UUID and authoritative cache file, then activated. The unified Projects screen presents each
 server project exactly once beside genuinely local placements and schematics; the source schematic
 behind a rebound placement is not exposed as a duplicate row. The active server project is remembered
-per server and dimension. Activating an unloaded project downloads and focuses it, while deactivating
+per server and dimension. Activating an unloaded project downloads and focuses it, while **Unfocus Project**
 only clears Logisticmatica's material and container overlays and leaves other Litematica rendering
 untouched. Accepted container marks are promoted to project-owned bindings; rejected marks remain
 local and are reported as a partial migration. Persisted local snapshots remain the no-server
 fallback. An explicit Export Local Copy action writes an independent, server-named `.litematic` file;
 shared cache files and shared placements cannot be uploaded as new projects implicitly.
+For an owner, the destructive UI action is **End Sharing**, not deletion of local work. The client
+subscribes for one final authoritative container snapshot, the server removes the project and
+broadcasts PROJECT_REMOVED, other clients unload it, and the owner rebinds the existing placement
+to its original local schematic when unchanged or to a newly exported authoritative local copy.
+Server-owned container bindings become persistent local marks before the subscription is cleared.
 
 For a shared schematic, the normal mark-container hotkey sends a server request instead of creating
 a private client mark. The server canonicalizes double chests, requires the player to be in the same

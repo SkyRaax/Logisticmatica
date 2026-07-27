@@ -8,6 +8,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Mutable;
 import org.spongepowered.asm.mixin.Shadow;
 
+import fi.dy.masa.litematica.schematic.LitematicaSchematic;
 import fi.dy.masa.litematica.schematic.placement.SchematicPlacement;
 
 import com.skyraax.logisticmatica.client.ISharedPlacement;
@@ -17,10 +18,19 @@ import com.skyraax.logisticmatica.client.ISharedPlacement;
 public class MixinSchematicPlacement implements ISharedPlacement {
 	@Shadow @Final @Mutable private UUID hashId;
 	@Shadow @Final @Mutable private Path schematicFile;
+	@Shadow @Final @Mutable private LitematicaSchematic schematic;
 
 	@Override
 	public void logisticmatica$bindToProject(UUID projectId, Path authoritativeFile) {
 		this.hashId = projectId;
 		this.schematicFile = authoritativeFile;
+	}
+
+	@Override
+	public void logisticmatica$detachToLocal(UUID placementId, Path localFile,
+			LitematicaSchematic schematic) {
+		this.hashId = placementId;
+		this.schematicFile = localFile;
+		this.schematic = schematic;
 	}
 }

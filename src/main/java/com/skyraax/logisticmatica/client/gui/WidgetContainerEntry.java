@@ -1,6 +1,7 @@
 package com.skyraax.logisticmatica.client.gui;
 
 import java.util.List;
+import java.util.UUID;
 import javax.annotation.Nullable;
 
 import net.minecraft.client.Minecraft;
@@ -84,6 +85,17 @@ public class WidgetContainerEntry extends WidgetListEntryBase<Snapshot> {
 		this.drawString(ctx, textX, this.y + 22, 0xFFAAAAAA, this.distanceAndSummary(pos));
 
 		super.render(ctx, mouseX, mouseY, selected);
+	}
+
+	@Override
+	public void postRenderHovered(GuiContext ctx, int mouseX, int mouseY, boolean selected) {
+		super.postRenderHovered(ctx, mouseX, mouseY, selected);
+		if (this.snapshot == null || !this.isMouseOver(mouseX, mouseY)) return;
+		UUID projectId = SchematicKey.projectId(this.snapshot.schematicKey());
+		if (projectId != null) {
+			RenderUtils.drawHoverText(ctx, mouseX, mouseY, List.of(StringUtils.translate(
+					"logisticmatica.gui.container.project_id", projectId)));
+		}
 	}
 
 	private String ellipsize(String value, int maximumWidth) {

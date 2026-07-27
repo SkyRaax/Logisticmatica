@@ -186,6 +186,27 @@ public class ContainerTracker {
 		}
 	}
 
+	/** Moves a removed owner's authoritative container bindings back into the local project. */
+	public void transferServerBindingsToLocal(UUID projectId, String schematicKey) {
+		Set<BlockPos> positions = this.serverBindings.remove(projectId);
+		if (positions == null) return;
+		String projectKey = projectKey(projectId);
+		LinkedHashSet<BlockPos> projectPositions = this.markedBySchematic.get(projectKey);
+		Map<BlockPos, DisplacedLocalBinding> displaced = this.displacedLocalBindings.remove(projectId);
+		LinkedHashSet<BlockPos> local = this.markedBySchematic.computeIfAbsent(
+				schematicKey, ignored -> new LinkedHashSet<>());
+		for (BlockPos pos : positions) {
+			if (!projectId.equals(this.serverProjectByPos.remove(pos))) continue;
+			this.keyByPos.remove(pos, projectKey);
+			if (projectPositions != null) projectPositions.remove(pos);
+			if (displaced != null) displaced.remove(pos);
+			local.add(pos);
+			this.keyByPos.put(pos, schematicKey);
+		}
+		if (projectPositions != null && projectPositions.isEmpty()) this.markedBySchematic.remove(projectKey);
+		this.save();
+	}
+
 	/**
 	 * Adds one server-owned binding and its vanilla item-id snapshot.
 	 *
@@ -208,16 +229,14 @@ public class ContainerTracker {
 		}
 		if (existing != null && existingProject == null) {
 			LinkedHashSet<BlockPos> local = this.markedBySchematic.get(existing);
-			if (!promoteLocal) {
-				Object2IntOpenHashMap<ItemType> current = this.contents.get(immutable);
-				Object2IntOpenHashMap<ItemType> saved = null;
-				if (current != null) {
-					saved = new Object2IntOpenHashMap<>();
-					saved.putAll(current);
-				}
-				this.displacedLocalBindings.computeIfAbsent(projectId, ignored -> new HashMap<>())
-						.putIfAbsent(immutable, new DisplacedLocalBinding(existing, saved));
+			Object2IntOpenHashMap<ItemType> current = this.contents.get(immutable);
+			Object2IntOpenHashMap<ItemType> saved = null;
+			if (current != null) {
+				saved = new Object2IntOpenHashMap<>();
+				saved.putAll(current);
 			}
+			this.displacedLocalBindings.computeIfAbsent(projectId, ignored -> new HashMap<>())
+					.putIfAbsent(immutable, new DisplacedLocalBinding(existing, saved));
 			if (local != null) {
 				local.remove(immutable);
 				if (local.isEmpty()) this.markedBySchematic.remove(existing);
@@ -237,6 +256,23 @@ public class ContainerTracker {
 		this.contents.put(immutable, snapshot);
 		return promoted;
 	}
+
+	/** Moves every local binding from an old schematic identity to its replacement. */
+	public void migrateLocalBindings(String fromKey, String toKey) {
+		if (fromKey.equals(toKey)) return;
+		LinkedHashSet<BlockPos> positions = this.markedBySchematic.remove(fromKey);
+		if (positions == null) return;
+		LinkedHashSet<BlockPos> target = this.markedBySchematic.computeIfAbsent(
+				toKey, ignored -> new LinkedHashSet<>());
+		for (BlockPos pos : positions) {
+			if (fromKey.equals(this.keyByPos.get(pos))) {
+				this.keyByPos.put(pos, toKey);
+				target.add(pos);
+			}
+		}
+		this.save();
+	}
+
 	/** Caches a container's contents, whether or not it is currently marked. */
 	public void setContents(BlockPos canonical, Object2IntOpenHashMap<ItemType> counts) {
 		this.contents.put(canonical.immutable(), counts);
