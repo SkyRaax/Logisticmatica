@@ -5,7 +5,7 @@
 	"name": "Logisticmatica",
 	"description": "Collaborative, server-aware build logistics for Litematica: a configurable material HUD, container tracking, persistent material substitution, and shared placements with live sync and granular permissions.",
 	"authors": [
-		"SkyRaax"
+		"SkyRax"
 	],
 	"contact": {
 		"homepage": "https://github.com/SkyRaax/Logisticmatica",
