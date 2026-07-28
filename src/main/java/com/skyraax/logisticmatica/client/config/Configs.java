@@ -58,7 +58,7 @@ public class Configs implements IConfigHandler {
 		public static final ConfigBoolean    OUTLINE_SEE_THROUGH   = new ConfigBoolean("hudOutlineSeeThrough", true).apply(HUD_KEY);
 		public static final ConfigBoolean    OUTLINE_FILL          = new ConfigBoolean("hudOutlineFill", true).apply(HUD_KEY);
 		public static final ConfigBoolean    SHOW_CONTAINER_PEEK   = new ConfigBoolean("hudContainerPeek", true).apply(HUD_KEY);
-		public static final ConfigOptionList PEEK_ALIGNMENT        = new ConfigOptionList("hudPeekAlignment", HudAlignment.TOP_RIGHT).apply(HUD_KEY);
+		public static final ConfigOptionList PEEK_ALIGNMENT        = new ConfigOptionList("hudPeekAlignment", HudAlignment.BOTTOM_RIGHT).apply(HUD_KEY);
 		public static final ConfigInteger    PEEK_OFFSET_X         = new ConfigInteger("hudPeekOffsetX", 4, 0, 32000).apply(HUD_KEY);
 		public static final ConfigInteger    PEEK_OFFSET_Y         = new ConfigInteger("hudPeekOffsetY", 4, 0, 32000).apply(HUD_KEY);
 		public static final ConfigDouble     PEEK_SCALE            = new ConfigDouble("hudPeekScale", 1.0, 0.1, 4.0).apply(HUD_KEY);

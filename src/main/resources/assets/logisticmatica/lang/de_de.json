@@ -139,7 +139,7 @@
 	"logisticmatica.config.hud.name.hudOutlineFill": "Umrandung füllen",
 	"logisticmatica.config.hud.comment.hudOutlineFill": "Füllt markierte Container halbtransparent aus, nicht nur die Umrandung - für ein deutlicheres Highlight.",
 	"logisticmatica.config.hud.name.hudPeekAlignment": "Vorschau-Position",
-	"logisticmatica.config.hud.comment.hudPeekAlignment": "An welcher Bildschirmecke das Vorschau-Panel verankert wird (weg von anderen Overlays wie Jade schieben).",
+	"logisticmatica.config.hud.comment.hudPeekAlignment": "An welcher Bildschirmecke das Vorschau-Panel verankert wird. Standard ist unten rechts; bei Bedarf kann es von anderen Overlays weggeschoben werden.",
 	"logisticmatica.config.hud.name.hudPeekOffsetX": "Vorschau-Versatz X",
 	"logisticmatica.config.hud.comment.hudPeekOffsetX": "Horizontaler Versatz des Vorschau-Panels von seiner Ecke, in Pixeln.",
 	"logisticmatica.config.hud.name.hudPeekOffsetY": "Vorschau-Versatz Y",
