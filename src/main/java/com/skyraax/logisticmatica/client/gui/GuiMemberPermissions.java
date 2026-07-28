@@ -57,6 +57,10 @@ public class GuiMemberPermissions extends GuiBase implements SharingRefreshable 
 			GuiBase.openGui(screen);
 		});
 		y += 28;
+		String worldNote = StringUtils.translate("logisticmatica.gui.share.roles_world_note");
+		this.addLabel(12, y, this.getStringWidth(worldNote), 12, 0xFFFFAA00, worldNote);
+		y += 18;
+
 		x = 12;
 		for (SharePermission permission : SharePermission.values()) {
 			String name = StringUtils.translate("logisticmatica.gui.share.permission."

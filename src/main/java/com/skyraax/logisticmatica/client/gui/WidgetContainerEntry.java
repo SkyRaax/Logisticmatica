@@ -10,12 +10,15 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.Vec3;
 
 import fi.dy.masa.malilib.gui.GuiBase;
+import fi.dy.masa.malilib.gui.Message.MessageType;
 import fi.dy.masa.malilib.gui.widgets.WidgetListEntryBase;
 import fi.dy.masa.malilib.render.GuiContext;
 import fi.dy.masa.malilib.render.RenderUtils;
+import fi.dy.masa.malilib.util.InfoUtils;
 import fi.dy.masa.malilib.util.StringUtils;
 
 import com.skyraax.logisticmatica.client.config.Configs;
+import com.skyraax.logisticmatica.client.ContainerLocator;
 import com.skyraax.logisticmatica.client.ContainerTracker;
 import com.skyraax.logisticmatica.client.SchematicColors;
 import com.skyraax.logisticmatica.client.SchematicKey;
@@ -74,11 +77,16 @@ public class WidgetContainerEntry extends WidgetListEntryBase<Snapshot> {
 		String total = StringUtils.translate("logisticmatica.gui.label.container.items", this.snapshot.totalItems());
 		String schematicKey = this.snapshot.schematicKey();
 		boolean visualsVisible = ContainerTracker.getInstance().isVisualsVisible(schematicKey, pos);
+		boolean locating = schematicKey != null && ContainerLocator.matches(schematicKey, pos);
 		String visualStatus = StringUtils.translate(visualsVisible
 				? "logisticmatica.gui.container.visuals.visible"
 				: "logisticmatica.gui.container.visuals.hidden");
+		String findStatus = StringUtils.translate(locating
+				? "logisticmatica.gui.container.finding"
+				: "logisticmatica.gui.container.find");
 		int visualX = this.visibilityRegionStart(visualStatus);
-		int totalX = visualX - this.getStringWidth(total) - 12;
+		int findX = this.findRegionStart(visualStatus, findStatus);
+		int totalX = findX - this.getStringWidth(total) - 12;
 		String schematicName = schematicKey != null ? SchematicKey.displayName(schematicKey)
 				: StringUtils.translate("logisticmatica.gui.container.unassigned");
 		int schematicColor = schematicKey != null ? SchematicColors.argb(schematicKey) : 0xFFAAAAAA;
@@ -90,6 +98,7 @@ public class WidgetContainerEntry extends WidgetListEntryBase<Snapshot> {
 		int coordsX = textX + 14 + this.getStringWidth(shownSchematic);
 		this.drawString(ctx, coordsX, this.y + 4, Configs.Colors.TEXT.getIntegerValue(), coords);
 		this.drawString(ctx, totalX, this.y + 4, Configs.Colors.HEADER.getIntegerValue(), total);
+		this.drawString(ctx, findX, this.y + 4, locating ? 0xFFFFFF55 : 0xFF55FFFF, findStatus);
 		this.drawString(ctx, visualX, this.y + 4, visualsVisible ? 0xFF55FF55 : 0xFFAAAAAA, visualStatus);
 
 		// Bottom line: distance from the player, then a summary of the most-plentiful items.
@@ -102,16 +111,34 @@ public class WidgetContainerEntry extends WidgetListEntryBase<Snapshot> {
 		return this.x + this.width - this.getStringWidth(label) - 8;
 	}
 
+	private int findRegionStart(String visualLabel, String findLabel) {
+		return this.visibilityRegionStart(visualLabel) - this.getStringWidth(findLabel) - 12;
+	}
+
 	@Override
 	protected boolean onMouseClickedImpl(MouseButtonEvent click, boolean doubleClick) {
 		if (this.snapshot == null || this.snapshot.schematicKey() == null) return false;
+		String schematicKey = this.snapshot.schematicKey();
+		BlockPos pos = this.snapshot.pos();
 		boolean visible = ContainerTracker.getInstance().isVisualsVisible(
-				this.snapshot.schematicKey(), this.snapshot.pos());
-		String label = StringUtils.translate(visible
+				schematicKey, pos);
+		String visualLabel = StringUtils.translate(visible
 				? "logisticmatica.gui.container.visuals.visible"
 				: "logisticmatica.gui.container.visuals.hidden");
-		if (click.x() >= this.visibilityRegionStart(label)) {
-			ContainerTracker.getInstance().toggleVisuals(this.snapshot.schematicKey(), this.snapshot.pos());
+		boolean locating = ContainerLocator.matches(schematicKey, pos);
+		String findLabel = StringUtils.translate(locating
+				? "logisticmatica.gui.container.finding"
+				: "logisticmatica.gui.container.find");
+		int visualX = this.visibilityRegionStart(visualLabel);
+		int findX = this.findRegionStart(visualLabel, findLabel);
+		if (click.x() >= visualX) {
+			ContainerTracker.getInstance().toggleVisuals(schematicKey, pos);
+		} else if (click.x() >= findX) {
+			ContainerLocator.highlight(schematicKey, pos);
+			GuiBase.openGui(null);
+			InfoUtils.showGuiOrInGameMessage(MessageType.INFO,
+					"logisticmatica.message.container.finding",
+					SchematicKey.displayName(schematicKey), pos.getX(), pos.getY(), pos.getZ());
 		} else {
 			GuiContainerContents contents = new GuiContainerContents(this.snapshot);
 			contents.setParent(this.gui);

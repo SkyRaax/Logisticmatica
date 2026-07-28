@@ -33,6 +33,7 @@ import fi.dy.masa.malilib.interfaces.IStringConsumer;
 import fi.dy.masa.malilib.util.FileUtils;
 import fi.dy.masa.malilib.util.GuiUtils;
 import fi.dy.masa.malilib.util.InfoUtils;
+import fi.dy.masa.malilib.util.StringUtils;
 import fi.dy.masa.litematica.data.DataManager;
 import fi.dy.masa.litematica.data.SchematicHolder;
 import fi.dy.masa.litematica.interfaces.ISchematicPlacementEventListener;
@@ -54,6 +55,7 @@ import com.skyraax.logisticmatica.client.Substitutions;
 import com.skyraax.logisticmatica.client.gui.SharingRefreshable;
 import com.skyraax.logisticmatica.share.ClientboundSharePayload;
 import com.skyraax.logisticmatica.share.ServerboundSharePayload;
+import com.skyraax.logisticmatica.share.ProjectStatus;
 import com.skyraax.logisticmatica.share.ShareAccess;
 import com.skyraax.logisticmatica.share.SharePermission;
 import com.skyraax.logisticmatica.share.ShareProtocol;
@@ -333,17 +335,20 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 				|| !project.dimension().equals(mc.level.dimension().identifier().toString())) return;
 		ContainerTracker tracker = ContainerTracker.getInstance();
 		int refreshed = 0;
-		String projectKey = ContainerTracker.projectKey(project.id());
+		Map<String, Integer> itemChanges = new HashMap<>();
 		for (SharedContainerKey key : delta.removals()) {
 			if (project.dimension().equals(key.dimension())) {
 				BlockPos pos = new BlockPos(key.x(), key.y(), key.z());
+				Map<String, Integer> previous = tracker.getContentsById(pos);
+				if (ItemChangeFormatter.accumulate(itemChanges, previous, Map.of())) refreshed++;
 				tracker.removeServerBinding(project.id(), pos);
 			}
 		}
 		for (SharedContainerView container : delta.upserts()) {
 			if (project.dimension().equals(container.dimension())) {
 				BlockPos pos = new BlockPos(container.x(), container.y(), container.z());
-				if (projectKey.equals(tracker.schematicKeyOf(pos))) refreshed++;
+				Map<String, Integer> previous = tracker.getContentsById(pos);
+				if (ItemChangeFormatter.accumulate(itemChanges, previous, container.items())) refreshed++;
 				tracker.setServerBinding(project.id(), pos, container.items());
 			}
 		}
@@ -353,9 +358,12 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 		ProjectNotificationSettings settings = ProjectNotificationSettings.getInstance();
 
 		if (refreshed > 0
+				&& !itemChanges.isEmpty()
 				&& settings.isEnabled(project.id(), ProjectNotificationCategory.CONTAINER_CONTENTS)) {
 			InfoUtils.showGuiOrInGameMessage(MessageType.INFO,
-					"logisticmatica.share.activity.container_contents", project.name(), refreshed);
+					"logisticmatica.share.activity.container_contents", project.name(), refreshed,
+					ItemChangeFormatter.format(itemChanges, true),
+					ItemChangeFormatter.format(itemChanges, false));
 		}
 	}
 
@@ -439,6 +447,12 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 				&& !previous.substitutions().equals(project.substitutions())) {
 			InfoUtils.showGuiOrInGameMessage(MessageType.INFO,
 					"logisticmatica.share.activity.substitutions", project.name(), project.substitutions().size());
+		}
+		if (settings.isEnabled(project.id(), ProjectNotificationCategory.STATUS)
+				&& previous.status() != project.status()) {
+			InfoUtils.showGuiOrInGameMessage(MessageType.INFO,
+					"logisticmatica.share.activity.status", project.name(),
+					StringUtils.translate(project.status().translationKey()));
 		}
 		if (settings.isEnabled(project.id(), ProjectNotificationCategory.CONTAINER_MARKS)
 				&& previous.containerCount() != project.containerCount()) {
@@ -887,6 +901,17 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 			w.writeInt(access.ordinal());
 		});
 		this.send(ServerboundSharePayload.of(ShareProtocol.ServerboundAction.SET_PUBLIC_ACCESS, body));
+	}
+
+	public void setProjectStatus(UUID projectId, ProjectStatus status) {
+		SharedProjectView project = this.projects.get(projectId);
+		if (project == null || !project.can(SharePermission.UPDATE_STATUS)) return;
+		byte[] body = ShareWire.encode(w -> {
+			w.writeUuid(projectId);
+			w.writeLong(project.revision());
+			w.writeInt(status.ordinal());
+		});
+		this.send(ServerboundSharePayload.of(ShareProtocol.ServerboundAction.SET_PROJECT_STATUS, body));
 	}
 
 	public void requestAccess(UUID projectId, int permissions) {

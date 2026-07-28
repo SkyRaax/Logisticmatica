@@ -6,7 +6,6 @@ import fi.dy.masa.malilib.gui.GuiTextFieldGeneric;
 import fi.dy.masa.malilib.gui.Message.MessageType;
 import fi.dy.masa.malilib.gui.button.ButtonBase;
 import fi.dy.masa.malilib.gui.button.ButtonGeneric;
-import fi.dy.masa.malilib.gui.button.ButtonOnOff;
 import fi.dy.masa.malilib.gui.button.IButtonActionListener;
 import fi.dy.masa.malilib.gui.interfaces.ITextFieldListener;
 import fi.dy.masa.malilib.gui.wrappers.TextFieldType;
@@ -28,8 +27,8 @@ import com.skyraax.logisticmatica.client.config.Configs;
  * A lean material-list screen for Logisticmatica, built on MaLiLib's list-widget framework.
  * <p>
  * Mirrors the essential setup of Litematica's {@code GuiMaterialList} (same list geometry and
- * completion-listener wiring) but strips it down to: a search box, a "Hide complete" toggle,
- * a "Refresh" button and a back/close button. The item rows are drawn by {@link WidgetMaterialEntry}.
+ * completion-listener wiring) while sharing every persistent presentation setting with the HUD.
+ * The item rows are drawn by {@link WidgetMaterialEntry}.
  */
 public class GuiMaterialListView extends GuiListBase<MaterialListEntry, WidgetMaterialEntry, WidgetListMaterialView>
                                  implements ICompletionListener
@@ -99,15 +98,15 @@ public class GuiMaterialListView extends GuiListBase<MaterialListEntry, WidgetMa
 		this.addTextField(searchField, new SearchFieldListener(this), TextFieldType.STRING);
 		x += 160 + 6;
 
-		// "Hide complete" on/off toggle
-		x += this.createButtonOnOff(x, y, this.materialList.getHideAvailable(), ButtonListener.Type.HIDE_COMPLETE) + gap;
-
 		// "Refresh" button (re-creates the material list from the schematic/placement/area)
 		x += this.createButton(x, y, ButtonListener.Type.REFRESH) + gap;
 
 		// Explicit master switch for Logisticmatica's own material HUD.
 		x += this.createButton(x, y, Configs.Hud.ENABLED.getBooleanValue()
 				? ButtonListener.Type.HIDE_HUD : ButtonListener.Type.SHOW_HUD) + gap;
+
+		// Every view setting is shared live by this list and the in-game HUD.
+		x += this.createButton(x, y, ButtonListener.Type.SETTINGS) + gap;
 
 		// "Substitutions" button: edit the focused schematic's material swaps.
 		x += this.createButton(x, y, ButtonListener.Type.SUBSTITUTIONS) + gap;
@@ -125,14 +124,6 @@ public class GuiMaterialListView extends GuiListBase<MaterialListEntry, WidgetMa
 	{
 		// width == -1 -> ButtonBase auto-sizes to the label width
 		ButtonGeneric button = new ButtonGeneric(x, y, -1, 20, type.getDisplayName());
-		this.addButton(button, new ButtonListener(type, this));
-		return button.getWidth();
-	}
-
-	private int createButtonOnOff(int x, int y, boolean isCurrentlyOn, ButtonListener.Type type)
-	{
-		// width == -1 -> ButtonOnOff sizes the ON and OFF states to a common width
-		ButtonOnOff button = new ButtonOnOff(x, y, -1, false, type.getTranslationKey(), isCurrentlyOn);
 		this.addButton(button, new ButtonListener(type, this));
 		return button.getWidth();
 	}
@@ -155,6 +146,13 @@ public class GuiMaterialListView extends GuiListBase<MaterialListEntry, WidgetMa
 		}
 
 		GuiSubstitutions gui = new GuiSubstitutions(schematic);
+		gui.setParent(this);
+		GuiBase.openGui(gui);
+	}
+
+	private void openViewSettings()
+	{
+		GuiMaterialViewSettings gui = new GuiMaterialViewSettings();
 		gui.setParent(this);
 		GuiBase.openGui(gui);
 	}
@@ -192,8 +190,6 @@ public class GuiMaterialListView extends GuiListBase<MaterialListEntry, WidgetMa
 		@Override
 		public void actionPerformedWithButton(ButtonBase button, int mouseButton)
 		{
-			MaterialListBase materialList = this.parent.materialList;
-
 			switch (this.type)
 			{
 				case REFRESH:
@@ -204,22 +200,13 @@ public class GuiMaterialListView extends GuiListBase<MaterialListEntry, WidgetMa
 					this.parent.openSubstitutions();
 					return; // openSubstitutions swaps the screen; don't re-init this one.
 
+				case SETTINGS:
+					this.parent.openViewSettings();
+					return;
+
 				case HIDE_HUD, SHOW_HUD:
 					Configs.Hud.ENABLED.setBooleanValue(!Configs.Hud.ENABLED.getBooleanValue());
 					Configs.saveToFile();
-					break;
-
-				case HIDE_COMPLETE:
-					materialList.setHideAvailable(!materialList.getHideAvailable());
-					// Restore the full pre-filtered set (minus ignored) so toggling the option off
-					// brings back entries that recreateFilteredList() may have pruned while it was on.
-					materialList.refreshPreFilteredList();
-
-					WidgetListMaterialView listWidget = this.parent.getListWidget();
-					if (listWidget != null)
-					{
-						listWidget.refreshEntries();
-					}
 					break;
 
 				case BACK:
@@ -235,8 +222,8 @@ public class GuiMaterialListView extends GuiListBase<MaterialListEntry, WidgetMa
 			REFRESH       ("logisticmatica.gui.button.material_list.refresh"),
 			HIDE_HUD      ("logisticmatica.gui.button.material_list.hide_hud"),
 			SHOW_HUD      ("logisticmatica.gui.button.material_list.show_hud"),
+			SETTINGS      ("logisticmatica.gui.button.material_list.settings"),
 			SUBSTITUTIONS ("logisticmatica.gui.button.substitutions"),
-			HIDE_COMPLETE ("logisticmatica.gui.button.material_list.hide_complete"),
 			BACK          ("logisticmatica.gui.button.back");
 
 			private final String translationKey;

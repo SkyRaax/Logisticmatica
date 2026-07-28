@@ -64,9 +64,11 @@ public class ContainerHighlightRenderer implements IRenderer {
 			Frustum culling, RenderBuffers buffers, GpuBufferSlice terrainFog, Vector4f fogColor,
 			ProfilerFiller profiler) {
 		ContainerTracker tracker = ContainerTracker.getInstance();
+		ContainerLocator.Target located = ContainerLocator.target();
+		boolean showFocused = Configs.Hud.CONTAINER_VISUALS_ENABLED.getBooleanValue()
+				&& !tracker.isEmpty() && FocusState.getSchematic() != null;
 
-		if (!Configs.Hud.CONTAINER_VISUALS_ENABLED.getBooleanValue()
-				|| tracker.isEmpty() || FocusState.getSchematic() == null) {
+		if (!showFocused && located == null) {
 			return;
 		}
 
@@ -79,22 +81,31 @@ public class ContainerHighlightRenderer implements IRenderer {
 		this.visible.clear();
 
 		// World overlays follow the explicit Logisticmatica focus, not every loaded schematic.
-		for (Map.Entry<String, LinkedHashSet<BlockPos>> schematic : tracker.markedBySchematic().entrySet()) {
-			if (!FocusState.isFocusedSchematicKey(schematic.getKey())) {
-				continue;
-			}
-
-			Color4f color = SchematicColors.forKey(schematic.getKey());
-
-			for (BlockPos canonical : schematic.getValue()) {
-				if (!tracker.isVisualsVisible(schematic.getKey(), canonical)) continue;
-				if (isTooFarAway(canonical, eye)) {
+		if (showFocused) {
+			for (Map.Entry<String, LinkedHashSet<BlockPos>> schematic : tracker.markedBySchematic().entrySet()) {
+				if (!FocusState.isFocusedSchematicKey(schematic.getKey())) {
 					continue;
 				}
 
-				for (BlockPos block : ContainerBlocks.blocks(mc.level, canonical)) {
-					this.visible.add(new ColoredBlock(block, color));
+				Color4f color = SchematicColors.forKey(schematic.getKey());
+
+				for (BlockPos canonical : schematic.getValue()) {
+					if (!tracker.isVisualsVisible(schematic.getKey(), canonical)) continue;
+					if (isTooFarAway(canonical, eye)) {
+						continue;
+					}
+
+					for (BlockPos block : ContainerBlocks.blocks(mc.level, canonical)) {
+						this.visible.add(new ColoredBlock(block, color));
+					}
 				}
+			}
+		}
+
+		if (located != null) {
+			Color4f beacon = ContainerLocator.color();
+			for (BlockPos block : ContainerBlocks.blocks(mc.level, located.pos())) {
+				this.visible.add(new ColoredBlock(block, beacon));
 			}
 		}
 
@@ -102,11 +113,11 @@ public class ContainerHighlightRenderer implements IRenderer {
 			return;
 		}
 
-		boolean seeThrough = Configs.Hud.OUTLINE_SEE_THROUGH.getBooleanValue();
+		boolean seeThrough = located != null || Configs.Hud.OUTLINE_SEE_THROUGH.getBooleanValue();
 
 		// Translucent filled sides first (a solid, chest-tracker-style highlight), then the crisp
 		// edges drawn on top. Both honour the see-through toggle (no-depth vs depth-tested pipeline).
-		if (Configs.Hud.OUTLINE_FILL.getBooleanValue()) {
+		if (located != null || Configs.Hud.OUTLINE_FILL.getBooleanValue()) {
 			Vec3 camPos = RenderUtils.camPos();
 			RenderPipeline fillPipeline = seeThrough
 					? MaLiLibPipelines.POSITION_COLOR_TRANSLUCENT_NO_DEPTH_NO_CULL

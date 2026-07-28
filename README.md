@@ -14,11 +14,13 @@ placement sharing with live sync and granular permissions.
 ## Features
 
 - [x] **Better material list & configurable HUD** — the *full* list (not just the first 10
-      entries), searchable, sortable and filterable, plus a HUD you can position, scale, style and
-      show or hide directly from Logisticmatica's own material screen.
+      entries), searchable, sortable and filterable. Sort, amount, filters, icons, header and
+      background are one live view shared by the menu and HUD; the HUD can also be positioned
+      and scaled.
 - [x] **Container tracking** — mark containers so their contents count towards the list,
       with a global visual switch, persistent per-container visibility, wall-penetrating highlights
-      and a perspective-correct content preview in the world.
+      and a perspective-correct content preview in the world. A Find action flashes any selected
+      container's outline for 15 seconds.
 - [x] **Material substitution** — persistently swap a material in a placement (e.g. a door
       wood type) for one you actually have, editable straight from the material list.
 - [x] **Placement sharing & live sync** *(server component)* — choose any loaded placement,
@@ -26,6 +28,8 @@ placement sharing with live sync and granular permissions.
 - [x] **Granular permissions** *(server component)* — decide exactly who may view, move,
       edit, substitute, manage containers or re-invite on each placement; projects can also be
       request-only, public-viewable, public-supplier or public-editor.
+- [x] **Shared project status** *(server component)* - Planning, Collecting, Ready to Build,
+      Building, Paused, Blocked or Completed is visible in Projects, project details and the HUD.
 - [x] **Persistence** — everything is saved per world/server; set it up once.
 
 ## Requirements
@@ -51,7 +55,7 @@ placement sharing with live sync and granular permissions.
 3. Select **Choose Placement to Share** for a genuinely local placement, or open a server project to
    activate it. Activating downloads it when necessary, focuses its material list and container data,
    and remembers it per server and dimension. Restricted projects reveal metadata only; players can
-   request a Viewer, Builder, Editor or Manager role.
+   request a Viewer, Supplier, Editor or Manager role.
 4. Owners and managers can invite players from a searchable online-player list, approve access
    requests, select role presets and fine-tune individual capabilities.
 5. **Download / Reload** refreshes the linked server placement. **Export Local Copy** writes an
@@ -63,7 +67,8 @@ placement sharing with live sync and granular permissions.
 7. Moving, rotating or mirroring a shared placement is broadcast live. The active project's marked
    containers are loaded from an authoritative chunked server snapshot and then kept current through
    live deltas. Project details expose local notification controls for placement, schematic,
-   substitution, container and access changes. **Unfocus Project** hides Logisticmatica's list,
+   substitution, project-status, container and access changes. Live container-content notifications
+   are hidden by default; when enabled they list exact added and removed items. **Unfocus Project** hides Logisticmatica's list,
    highlights, labels and peek without deleting the project or hiding unrelated Litematica
    placements.
 8. **End Sharing** first refreshes the owner's authoritative container snapshot, removes the server

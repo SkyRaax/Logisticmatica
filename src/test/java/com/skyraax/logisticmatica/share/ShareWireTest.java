@@ -18,7 +18,7 @@ class ShareWireTest {
 		UUID projectId = UUID.randomUUID();
 		UUID ownerId = UUID.randomUUID();
 		SharedProjectView expected = new SharedProjectView(projectId, 42, "Spawn perimeter",
-				ownerId, "SkyRaax", "minecraft:overworld", 12, 64, -8, 1, 2,
+				ProjectStatus.BUILDING, ownerId, "SkyRaax", "minecraft:overworld", 12, 64, -8, 1, 2,
 				"a".repeat(64), 1234, SharePermission.EDITOR, ShareAccess.PUBLIC_EDITOR,
 				true, false, false,
 				List.of(new SharedMemberView(ownerId, "SkyRaax", SharePermission.ALL, true)),

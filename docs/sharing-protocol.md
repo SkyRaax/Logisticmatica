@@ -1,7 +1,8 @@
-# Logisticmatica sharing protocol v4
+# Logisticmatica sharing protocol v5
 
 Logisticmatica uses a server-authoritative Fabric play protocol. The server owns project membership,
 permissions, placement transforms, schematic versions, substitutions and tracked-container state.
+The server also owns a visible workflow status for every project.
 Clients render and edit Litematica placements, but every shared mutation is validated by the server.
 
 ## Connection and transport
@@ -41,7 +42,7 @@ Client to server actions:
 - `DELETE_PROJECT`, `LEAVE_PROJECT`
 - `TOGGLE_CONTAINER`, `REFRESH_CONTAINER`
 - `LIST_PLAYERS`, `SET_PUBLIC_ACCESS`, `REQUEST_ACCESS`, `RESPOND_ACCESS`
-- `SUBSCRIBE_PROJECT`, `UNSUBSCRIBE_PROJECT`
+- `SUBSCRIBE_PROJECT`, `UNSUBSCRIBE_PROJECT`, `SET_PROJECT_STATUS`
 
 Server to client events:
 
@@ -70,9 +71,13 @@ Permissions are independent bit flags on each project:
 | `INVITE` | Invite online players |
 | `MANAGE_PERMISSIONS` | Edit or remove non-owner members |
 | `DELETE` | Permanently delete the project |
+| `UPDATE_STATUS` | Change the visible project workflow status |
 
-Viewer, Builder, Editor and Manager are convenience presets; the UI also exposes every flag
-individually. The owner has all capabilities. Server operators can administer projects through the
+Viewer, Supplier, Editor and Manager are user-facing convenience presets; the internal `BUILDER`
+mask remains stable for wire and stored-data compatibility. These permissions control Logisticmatica
+project data only, never physical building, breaking, opening or filling in the Minecraft world.
+The UI also exposes every flag individually. The owner has all capabilities. Server operators can
+administer projects through the
 `logisticmatica.admin` permission node, backed by fabric-permissions-api with operator fallback.
 Pending invitees and access requesters receive only project metadata, not the schematic,
 substitutions, non-owner member list or container contents.
@@ -80,8 +85,8 @@ substitutions, non-owner member list or container contents.
 | Preset | Capabilities |
 |---|---|
 | Viewer | `VIEW` |
-| Builder | Viewer + `MANAGE_CONTAINERS` |
-| Editor | Builder + `MOVE`, `UPDATE_SCHEMATIC`, `SUBSTITUTE` |
+| Supplier | Viewer + `MANAGE_CONTAINERS` |
+| Editor | Supplier + `MOVE`, `UPDATE_SCHEMATIC`, `SUBSTITUTE`, `UPDATE_STATUS` |
 | Manager | Editor + `INVITE`, `MANAGE_PERMISSIONS` |
 | Owner | Every capability including `DELETE` |
 
@@ -94,11 +99,10 @@ Every project appears in the server directory and has one public-access policy:
 |---|---|
 | Request only | Metadata only; a player may request a role |
 | Public Viewer | Viewer |
-| Public Supplier | Builder |
+| Public Supplier | Supplier |
 | Public Editor | Editor |
 
-Directory labels retain the public-mode names Viewer, Supplier and Editor. Builder remains the
-individual member preset, even though Public Supplier deliberately uses the same capability mask.
+Directory and member labels use Viewer, Supplier and Editor consistently.
 
 Public access never grants invitations, permission management or deletion. Accepted member rights
 take precedence over the public preset. Invitations and access requests are distinct persisted
@@ -176,11 +180,18 @@ size are derived from the current-frame camera matrices and perspective clip dep
 zoom and viewport edges behave like a billboard in 3D space. Panels are allowed to leave the viewport
 naturally instead of being clamped to its edge. The maximum visible item rows and the former column
 layout remain configurable.
+Every project persists one status: Planning, Collecting Materials, Ready to Build, Building, Paused,
+Blocked or Completed. The status is visible even in directory metadata, so newcomers know whether
+materials are still needed or work should stop before downloading the schematic. Editors can update
+it; updates use the normal project revision and are broadcast to every directory viewer.
+
 
 ## Client notifications and persistence
 
 Project detail screens expose per-project notification categories for placement transforms,
-schematic replacements, substitutions, container marks, live container contents and access changes.
+schematic replacements, substitutions, workflow status, container marks, live container contents
+and access changes. Container-content messages are disabled by default because the material list
+already updates live; if enabled, each message names the exact net added and removed items.
 Preferences are local to each client and server UUID. Server updates are compared with the previous
 authoritative view and shown as concrete translated activity messages; internal scheduler wording is
 not used by Logisticmatica's refresh action.
@@ -193,7 +204,7 @@ Persistence boundaries are explicit:
 | Local marks, cached contents and per-container visual visibility | Client per-world `config/logisticmatica/containers_*.json` |
 | Local substitutions | Client `config/logisticmatica/substitutions.json` |
 | Active shared project and notification preferences | Client `config/logisticmatica/shared/<server-uuid>/` |
-| Shared transform, schematic hash, substitutions, ACL, requests and authoritative containers | Server `<world>/data/logisticmatica/projects.json` plus schematic blobs |
+| Shared transform, schematic hash, workflow status, substitutions, ACL, requests and authoritative containers | Server `<world>/data/logisticmatica/projects.json` plus schematic blobs |
 | Blocks placed in the Minecraft world | The normal server world save, outside Logisticmatica |
 
 Moving, rotating or mirroring a shared placement, changing shared substitutions, replacing its

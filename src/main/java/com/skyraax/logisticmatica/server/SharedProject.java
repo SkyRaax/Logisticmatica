@@ -12,6 +12,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
+import com.skyraax.logisticmatica.share.ProjectStatus;
 import com.skyraax.logisticmatica.share.ShareAccess;
 import com.skyraax.logisticmatica.share.SharePermission;
 import com.skyraax.logisticmatica.share.SharedContainerView;
@@ -20,7 +21,7 @@ import com.skyraax.logisticmatica.share.SharedProjectView;
 
 /** Mutable server-owned state for one shared placement. Accessed only on the logical server thread. */
 public final class SharedProject {
-	public static final int SCHEMA_VERSION = 3;
+	public static final int SCHEMA_VERSION = 4;
 
 	public record ContainerKey(String dimension, int x, int y, int z) {
 	}
@@ -64,6 +65,7 @@ public final class SharedProject {
 	private final UUID ownerId;
 	private String ownerName;
 	private String name;
+	private ProjectStatus status = ProjectStatus.PLANNING;
 	private long revision;
 	private long containerRevision;
 	private String dimension;
@@ -101,6 +103,7 @@ public final class SharedProject {
 	public UUID ownerId() { return this.ownerId; }
 	public String ownerName() { return this.ownerName; }
 	public String name() { return this.name; }
+	public ProjectStatus status() { return this.status; }
 	public long revision() { return this.revision; }
 	public long containerRevision() { return this.containerRevision; }
 	public String dimension() { return this.dimension; }
@@ -152,6 +155,12 @@ public final class SharedProject {
 	public void setPublicAccess(ShareAccess access) {
 		if (this.publicAccess == access) return;
 		this.publicAccess = access;
+		this.bumpRevision();
+	}
+
+	public void setStatus(ProjectStatus status) {
+		if (this.status == status) return;
+		this.status = status;
 		this.bumpRevision();
 	}
 
@@ -319,7 +328,7 @@ public final class SharedProject {
 		}
 
 
-		return new SharedProjectView(this.id, this.revision, this.name, this.ownerId, this.ownerName,
+		return new SharedProjectView(this.id, this.revision, this.name, this.status, this.ownerId, this.ownerName,
 				this.dimension, this.x, this.y, this.z, this.rotation, this.mirror,
 				mayView ? this.schematicHash : "", mayView ? this.schematicSize : 0, permissions,
 				this.publicAccess, member, pending, requested, memberViews, mayView ? this.substitutions : Map.of(),
@@ -333,6 +342,7 @@ public final class SharedProject {
 		json.addProperty("ownerId", this.ownerId.toString());
 		json.addProperty("ownerName", this.ownerName);
 		json.addProperty("name", this.name);
+		json.addProperty("status", this.status.name());
 		json.addProperty("revision", this.revision);
 		json.addProperty("containerRevision", this.containerRevision);
 		json.addProperty("dimension", this.dimension);
@@ -388,6 +398,10 @@ public final class SharedProject {
 					json.get("rotation").getAsInt(), json.get("mirror").getAsInt(),
 					json.get("schematicHash").getAsString(), json.get("schematicSize").getAsInt());
 			project.revision = Math.max(1L, json.get("revision").getAsLong());
+			if (json.has("status")) {
+				try { project.status = ProjectStatus.valueOf(json.get("status").getAsString()); }
+				catch (IllegalArgumentException ignored) {}
+			}
 			project.containerRevision = json.has("containerRevision")
 					? Math.max(1L, json.get("containerRevision").getAsLong()) : 1L;
 			if (json.has("publicAccess")) {

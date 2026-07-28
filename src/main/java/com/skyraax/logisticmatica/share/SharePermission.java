@@ -11,12 +11,13 @@ public enum SharePermission {
 	MANAGE_CONTAINERS(1 << 4),
 	INVITE(1 << 5),
 	MANAGE_PERMISSIONS(1 << 6),
-	DELETE(1 << 7);
+	DELETE(1 << 7),
+	UPDATE_STATUS(1 << 8);
 
 	public static final int ALL = (1 << values().length) - 1;
 	public static final int VIEWER = VIEW.mask;
 	public static final int BUILDER = VIEW.mask | MANAGE_CONTAINERS.mask;
-	public static final int EDITOR = BUILDER | MOVE.mask | UPDATE_SCHEMATIC.mask | SUBSTITUTE.mask;
+	public static final int EDITOR = BUILDER | MOVE.mask | UPDATE_SCHEMATIC.mask | SUBSTITUTE.mask | UPDATE_STATUS.mask;
 	public static final int MANAGER = EDITOR | INVITE.mask | MANAGE_PERMISSIONS.mask;
 
 	private final int mask;

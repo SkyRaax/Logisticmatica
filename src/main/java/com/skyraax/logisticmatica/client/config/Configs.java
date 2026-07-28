@@ -44,6 +44,9 @@ public class Configs implements IConfigHandler {
 		public static final ConfigInteger    MAX_LINES       = new ConfigInteger("hudMaxLines", 0, 0, 1024).apply(HUD_KEY);
 		public static final ConfigBoolean    HIDE_COMPLETE   = new ConfigBoolean("hudHideComplete", false).apply(HUD_KEY);
 		public static final ConfigBoolean    ONLY_MISSING    = new ConfigBoolean("hudOnlyMissing", false).apply(HUD_KEY);
+		public static final ConfigOptionList MATERIAL_SORT   = new ConfigOptionList("hudMaterialSort", MaterialSortMode.SHORTAGE).apply(HUD_KEY);
+		public static final ConfigBoolean    MATERIAL_SORT_DESCENDING = new ConfigBoolean("hudMaterialSortDescending", true).apply(HUD_KEY);
+		public static final ConfigOptionList MATERIAL_AMOUNT = new ConfigOptionList("hudMaterialAmount", MaterialAmountMode.TOTAL).apply(HUD_KEY);
 		public static final ConfigBoolean    SHOW_HEADER     = new ConfigBoolean("hudShowHeader", true).apply(HUD_KEY);
 		public static final ConfigBoolean    SHOW_BACKGROUND = new ConfigBoolean("hudBackground", true).apply(HUD_KEY);
 		public static final ConfigBoolean    SHOW_ITEM_ICONS = new ConfigBoolean("hudShowItemIcons", true).apply(HUD_KEY);
@@ -62,7 +65,8 @@ public class Configs implements IConfigHandler {
 
 		public static final ImmutableList<IConfigBase> OPTIONS = ImmutableList.of(
 				ENABLED, RENDER_IN_GUIS, ALIGNMENT, OFFSET_X, OFFSET_Y, SCALE, MAX_LINES,
-				HIDE_COMPLETE, ONLY_MISSING, SHOW_HEADER, SHOW_BACKGROUND, SHOW_ITEM_ICONS,
+				HIDE_COMPLETE, ONLY_MISSING, MATERIAL_SORT, MATERIAL_SORT_DESCENDING, MATERIAL_AMOUNT,
+				SHOW_HEADER, SHOW_BACKGROUND, SHOW_ITEM_ICONS,
 				CONTAINER_VISUALS_ENABLED, SHOW_CONTAINER_LABELS, LABEL_SEE_THROUGH, LABEL_LAYOUT, LABEL_MAX_ITEMS,
 				OUTLINE_SEE_THROUGH, OUTLINE_FILL,
 				SHOW_CONTAINER_PEEK, PEEK_ALIGNMENT, PEEK_OFFSET_X, PEEK_OFFSET_Y, PEEK_SCALE

@@ -9,6 +9,7 @@ public record SharedProjectView(
 		UUID id,
 		long revision,
 		String name,
+		ProjectStatus status,
 		UUID ownerId,
 		String ownerName,
 		String dimension,
@@ -30,6 +31,7 @@ public record SharedProjectView(
 		int containerCount) {
 	public SharedProjectView {
 		myPermissions = SharePermission.sanitize(myPermissions);
+		status = status != null ? status : ProjectStatus.PLANNING;
 		publicAccess = publicAccess != null ? publicAccess : ShareAccess.REQUEST_ONLY;
 		members = List.copyOf(members);
 		substitutions = Map.copyOf(substitutions);

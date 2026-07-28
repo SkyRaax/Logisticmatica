@@ -208,6 +208,7 @@ public final class ShareWire {
 			this.writeUuid(project.id());
 			this.writeLong(project.revision());
 			this.writeString(project.name());
+			this.writeInt(project.status().ordinal());
 			this.writeUuid(project.ownerId());
 			this.writeString(project.ownerName());
 			this.writeString(project.dimension());
@@ -333,6 +334,7 @@ public final class ShareWire {
 			UUID id = this.readUuid();
 			long revision = this.readLong();
 			String name = this.readString();
+			ProjectStatus status = ProjectStatus.byId(this.readInt());
 			UUID ownerId = this.readUuid();
 			String ownerName = this.readString();
 			String dimension = this.readString();
@@ -360,7 +362,7 @@ public final class ShareWire {
 			long containerRevision = this.readLong();
 			int containerCount = this.readCount(ShareProtocol.MAX_CONTAINERS_PER_PROJECT);
 
-			return new SharedProjectView(id, revision, name, ownerId, ownerName, dimension, x, y, z,
+			return new SharedProjectView(id, revision, name, status, ownerId, ownerName, dimension, x, y, z,
 					rotation, mirror, schematicHash, schematicSize, myPermissions, publicAccess,
 					member, pendingInvite, accessRequested, members, substitutions,
 					containerRevision, containerCount);

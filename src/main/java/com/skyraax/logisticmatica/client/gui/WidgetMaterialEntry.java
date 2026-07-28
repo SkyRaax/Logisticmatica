@@ -10,6 +10,7 @@ import fi.dy.masa.malilib.render.RenderUtils;
 
 import fi.dy.masa.litematica.materials.MaterialListEntry;
 
+import com.skyraax.logisticmatica.client.MaterialView;
 import com.skyraax.logisticmatica.client.config.Configs;
 
 /**
@@ -57,16 +58,19 @@ public class WidgetMaterialEntry extends WidgetListEntryBase<MaterialListEntry>
 			int iconY = this.y + 3;
 			int textY = this.y + 7;
 
-			// Item icon, with a faint backing square like Litematica's rows.
-			RenderUtils.drawRect(ctx, iconX, iconY, 16, 16, 0x20FFFFFF);
-			ctx.renderItem(stack, iconX, iconY);
+			int textX = iconX;
+			if (Configs.Hud.SHOW_ITEM_ICONS.getBooleanValue()) {
+				// Item icon, with a faint backing square like Litematica's rows.
+				RenderUtils.drawRect(ctx, iconX, iconY, 16, 16, 0x20FFFFFF);
+				ctx.renderItem(stack, iconX, iconY);
+				textX += 20;
+			}
 
-			// Item display name, to the right of the icon.
-			this.drawString(ctx, iconX + 20, textY, textColor, stack.getHoverName().getString());
+			this.drawString(ctx, textX, textY, textColor, stack.getHoverName().getString());
 
 			// Right-aligned "have / need" count, coloured by availability.
 			int available = this.entry.getCountAvailable();
-			int total = this.entry.getCountTotal();
+			int total = MaterialView.target(this.entry);
 			String counts = available + " / " + total;
 			int countColor = available >= total
 					? Configs.Colors.HAVE.getIntegerValue()

@@ -1,6 +1,5 @@
 package com.skyraax.logisticmatica.client.hud;
 
-import java.util.ArrayList;
 import java.util.List;
 
 import net.minecraft.client.Minecraft;
@@ -18,6 +17,10 @@ import fi.dy.masa.litematica.materials.MaterialListBase;
 import fi.dy.masa.litematica.materials.MaterialListEntry;
 import fi.dy.masa.litematica.materials.MaterialListUtils;
 
+import com.skyraax.logisticmatica.client.FocusState;
+import com.skyraax.logisticmatica.client.ProjectStatusPresentation;
+import com.skyraax.logisticmatica.client.share.ClientShareManager;
+import com.skyraax.logisticmatica.client.MaterialView;
 import com.skyraax.logisticmatica.client.config.Configs;
 
 /**
@@ -71,7 +74,7 @@ public class MaterialHudRenderer implements IRenderer {
 			this.lastAvailUpdate = now;
 		}
 
-		List<MaterialListEntry> list = this.buildDisplayList(materialList);
+		List<MaterialListEntry> list = MaterialView.entries(materialList);
 		if (list.isEmpty()) {
 			return;
 		}
@@ -79,35 +82,6 @@ public class MaterialHudRenderer implements IRenderer {
 		this.renderList(ctx, mc, materialList, list);
 	}
 
-	/** Applies our config-driven filtering + sorting to the raw entries. */
-	private List<MaterialListEntry> buildDisplayList(MaterialListBase materialList) {
-		boolean onlyMissing = Configs.Hud.ONLY_MISSING.getBooleanValue();
-		boolean hideComplete = Configs.Hud.HIDE_COMPLETE.getBooleanValue();
-
-		List<MaterialListEntry> list = new ArrayList<>();
-		for (MaterialListEntry e : materialList.getMaterialsAll()) {
-			boolean complete = e.getCountAvailable() >= e.getCountTotal();
-			if (onlyMissing && e.getCountMissing() <= 0) {
-				continue;
-			}
-			if (hideComplete && complete) {
-				continue;
-			}
-			list.add(e);
-		}
-
-		// Incomplete items first (largest shortfall on top), then alphabetical.
-		list.sort((a, b) -> {
-			int shortfallA = Math.max(0, a.getCountTotal() - a.getCountAvailable());
-			int shortfallB = Math.max(0, b.getCountTotal() - b.getCountAvailable());
-			if (shortfallA != shortfallB) {
-				return Integer.compare(shortfallB, shortfallA);
-			}
-			return a.getStack().getHoverName().getString()
-					.compareToIgnoreCase(b.getStack().getHoverName().getString());
-		});
-		return list;
-	}
 
 	private void renderList(GuiContext ctx, Minecraft mc, MaterialListBase materialList, List<MaterialListEntry> list) {
 		Font font = mc.font;
@@ -158,9 +132,9 @@ public class MaterialHudRenderer implements IRenderer {
 		for (int i = 0; i < rows; ++i) {
 			MaterialListEntry e = list.get(startIdx + i);
 			nameW = Math.max(nameW, font.width(e.getStack().getHoverName().getString()));
-			String c = e.getCountAvailable() + " / " + e.getCountTotal();
+			String c = e.getCountAvailable() + " / " + MaterialView.target(e);
 			counts[i] = c;
-			countColors[i] = e.getCountAvailable() >= e.getCountTotal() ? colHave : colMissing;
+			countColors[i] = e.getCountAvailable() >= MaterialView.target(e) ? colHave : colMissing;
 			countW = Math.max(countW, font.width(c));
 		}
 
@@ -170,6 +144,12 @@ public class MaterialHudRenderer implements IRenderer {
 			long missing = materialList.getCountMissing();
 			String name = materialList.getName();
 			header = (name != null && !name.isEmpty() ? name : "Materials") + "  " + (total - missing) + " / " + total;
+			var projectId = FocusState.getProjectId();
+			var project = projectId != null ? ClientShareManager.getInstance().project(projectId) : null;
+			if (project != null) {
+				header += "  [" + ProjectStatusPresentation.label(project.status()) + "]";
+			}
+
 			if (pageCount > 1) {
 				header = header + "  [" + (page + 1) + "/" + pageCount + "]";
 			}

@@ -13,6 +13,8 @@ import fi.dy.masa.malilib.gui.widgets.WidgetListBase;
 
 import fi.dy.masa.litematica.materials.MaterialListEntry;
 
+import com.skyraax.logisticmatica.client.MaterialView;
+
 /**
  * The scrollable material list. Entries come straight from the owning screen's
  * {@link fi.dy.masa.litematica.materials.MaterialListBase}, and filtering is driven by the
@@ -63,8 +65,7 @@ public class WidgetListMaterialView extends WidgetListBase<MaterialListEntry, Wi
 	@Override
 	protected Collection<MaterialListEntry> getAllEntries()
 	{
-		// true -> let MaterialListBase refresh its filtered ("hide available") sub-list as needed.
-		return this.gui.getMaterialList().getMaterialsFiltered(true);
+		return MaterialView.entries(this.gui.getMaterialList());
 	}
 
 	@Override

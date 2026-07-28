@@ -10,6 +10,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 import com.skyraax.logisticmatica.share.ShareAccess;
+import com.skyraax.logisticmatica.share.ProjectStatus;
 import com.skyraax.logisticmatica.share.SharePermission;
 import com.skyraax.logisticmatica.share.SharedProjectView;
 
@@ -112,11 +113,13 @@ class SharedProjectTest {
 	void publicPolicyAndAccessRequestSurvivePersistence() {
 		UUID requester = UUID.randomUUID();
 		SharedProject project = project(UUID.randomUUID());
+		project.setStatus(ProjectStatus.BLOCKED);
 		project.setPublicAccess(ShareAccess.PUBLIC_SUPPLIER);
 		project.requestAccess(requester, "Supplier", SharePermission.EDITOR);
 
 		SharedProject restored = SharedProject.fromJson(project.toJson());
 		assertTrue(restored != null);
+		assertEquals(ProjectStatus.BLOCKED, restored.status());
 		assertEquals(ShareAccess.PUBLIC_SUPPLIER, restored.publicAccess());
 		assertTrue(restored.accessRequestedBy(requester));
 		assertEquals(SharePermission.EDITOR, restored.members().get(requester).permissions());

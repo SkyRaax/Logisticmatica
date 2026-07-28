@@ -30,6 +30,7 @@ import me.lucko.fabric.api.permissions.v0.Permissions;
 import com.skyraax.logisticmatica.Logisticmatica;
 import com.skyraax.logisticmatica.share.ClientboundSharePayload;
 import com.skyraax.logisticmatica.share.ServerboundSharePayload;
+import com.skyraax.logisticmatica.share.ProjectStatus;
 import com.skyraax.logisticmatica.share.ShareAccess;
 import com.skyraax.logisticmatica.share.SharePermission;
 import com.skyraax.logisticmatica.share.ShareProtocol;
@@ -114,6 +115,7 @@ public final class ShareServer {
 				case RESPOND_ACCESS -> this.handleAccessResponse(player, payload);
 				case SUBSCRIBE_PROJECT -> this.handleSubscribe(player, payload);
 				case UNSUBSCRIBE_PROJECT -> this.handleUnsubscribe(player, payload);
+				case SET_PROJECT_STATUS -> this.handleProjectStatus(player, payload);
 			}
 		} catch (IOException | IllegalArgumentException e) {
 			Logisticmatica.LOGGER.warn("[{}] Rejected sharing action {} from {}: {}",
@@ -382,6 +384,21 @@ public final class ShareServer {
 		project.setPublicAccess(access);
 		this.changed(project);
 		this.sendNotice(player, payload.requestId(), "logisticmatica.share.notice.public_access_updated");
+	}
+
+	private void handleProjectStatus(ServerPlayer player, ServerboundSharePayload payload) throws IOException {
+		ShareWire.Reader reader = ShareWire.decode(payload.body());
+		UUID projectId = reader.readUuid();
+		long expectedRevision = reader.readLong();
+		ProjectStatus status = ProjectStatus.byId(reader.readInt());
+		reader.requireFinished();
+
+		SharedProject project = this.requireProject(player, projectId,
+				SharePermission.UPDATE_STATUS, payload.requestId());
+		if (!this.checkRevision(player, project, expectedRevision, payload.requestId())) return;
+		project.setStatus(status);
+		this.changed(project);
+		this.sendNotice(player, payload.requestId(), "logisticmatica.share.notice.status_updated");
 	}
 
 	private void handleAccessRequest(ServerPlayer player, ServerboundSharePayload payload) throws IOException {

@@ -33,6 +33,7 @@ import fi.dy.masa.litematica.schematic.placement.SchematicPlacement;
 
 import com.skyraax.logisticmatica.client.FocusController;
 import com.skyraax.logisticmatica.client.FocusState;
+import com.skyraax.logisticmatica.client.ProjectStatusPresentation;
 import com.skyraax.logisticmatica.client.share.ClientShareManager;
 import com.skyraax.logisticmatica.share.SharePermission;
 import com.skyraax.logisticmatica.share.SharedProjectView;
@@ -223,6 +224,7 @@ public class GuiProjects extends GuiListBase<GuiProjects.ProjectEntry, GuiProjec
 			if (entry.project() != null) {
 				values.add(entry.project().ownerName());
 				values.add(entry.project().dimension());
+				values.add(ProjectStatusPresentation.label(entry.project().status()));
 				values.add("server shared project");
 			} else if (entry.schematic() != null) {
 				values.add(String.valueOf(entry.schematic().getFile()));
@@ -272,7 +274,7 @@ public class GuiProjects extends GuiListBase<GuiProjects.ProjectEntry, GuiProjec
 					detail = StringUtils.translate("logisticmatica.gui.projects.server_detail",
 							project.ownerName(), project.dimension(), project.x(), project.y(), project.z(),
 							project.containerCount());
-					status = project.pendingInvite() ? StringUtils.translate("logisticmatica.gui.share.pending")
+					String workspaceStatus = project.pendingInvite() ? StringUtils.translate("logisticmatica.gui.share.pending")
 							: project.accessRequested() ? StringUtils.translate("logisticmatica.gui.share.request_sent")
 							: !project.can(SharePermission.VIEW)
 									? StringUtils.translate("logisticmatica.gui.share.request_access")
@@ -281,7 +283,8 @@ public class GuiProjects extends GuiListBase<GuiProjects.ProjectEntry, GuiProjec
 											: this.sharing.isLoaded(project.id())
 													? "logisticmatica.gui.share.status.loaded"
 													: "logisticmatica.gui.share.status.not_loaded");
-					statusColor = project.can(SharePermission.VIEW) ? 0xFF55FFFF : 0xFFFFAA00;
+					status = ProjectStatusPresentation.label(project.status()) + "  |  " + workspaceStatus;
+					statusColor = ProjectStatusPresentation.color(project.status());
 				} else {
 					Path file = this.entry.schematic() != null ? this.entry.schematic().getFile() : null;
 					String filename = file != null ? String.valueOf(file.getFileName())

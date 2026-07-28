@@ -374,6 +374,17 @@ public class ContainerTracker {
 		return this.contents.get(canonical.immutable());
 	}
 
+	/** Immutable item-id snapshot used to describe authoritative content deltas to the player. */
+	public Map<String, Integer> getContentsById(BlockPos canonical) {
+		Object2IntOpenHashMap<ItemType> snapshot = this.contents.get(canonical.immutable());
+		if (snapshot == null || snapshot.isEmpty()) return Map.of();
+		Map<String, Integer> result = new LinkedHashMap<>();
+		for (Object2IntMap.Entry<ItemType> entry : snapshot.object2IntEntrySet()) {
+			if (entry.getIntValue() > 0) result.put(idOf(entry.getKey()), entry.getIntValue());
+		}
+		return Map.copyOf(result);
+	}
+
 	/** Sum of the contents of one schematic's marked containers whose contents we know. */
 	public Object2IntOpenHashMap<ItemType> totalContentsFor(String schematicKey) {
 		Object2IntOpenHashMap<ItemType> total = new Object2IntOpenHashMap<>();

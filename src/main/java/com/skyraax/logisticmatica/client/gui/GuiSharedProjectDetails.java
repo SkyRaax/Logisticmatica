@@ -15,6 +15,7 @@ import fi.dy.masa.malilib.util.StringUtils;
 
 import fi.dy.masa.litematica.gui.GuiPlacementConfiguration;
 
+import com.skyraax.logisticmatica.client.ProjectStatusPresentation;
 import com.skyraax.logisticmatica.client.share.ClientShareManager;
 import com.skyraax.logisticmatica.share.ShareAccess;
 import com.skyraax.logisticmatica.share.SharePermission;
@@ -58,6 +59,20 @@ public class GuiSharedProjectDetails extends GuiBase implements SharingRefreshab
 				project.x(), project.y(), project.z());
 		this.addLabel(x, y, this.getStringWidth(location), 12, 0xFFAAAAAA, location);
 		y += 18;
+		String phase = ProjectStatusPresentation.label(project.status());
+		String phaseLabel = StringUtils.translate("logisticmatica.gui.share.project_status", phase);
+		this.addLabel(x, y + 5, this.getStringWidth(phaseLabel), 12,
+				ProjectStatusPresentation.color(project.status()), phaseLabel);
+		if (project.can(SharePermission.UPDATE_STATUS)) {
+			ButtonGeneric statusButton = new ButtonGeneric(Math.max(180, this.getStringWidth(phaseLabel) + 28), y,
+					-1, 20, StringUtils.translate("logisticmatica.gui.share.change_status"));
+			statusButton.setHoverStrings(project.status().descriptionKey(),
+					"logisticmatica.gui.share.change_status.description");
+			this.addButton(statusButton, new Listener(Action.PROJECT_STATUS, this, null));
+		}
+		y += 24;
+		y = this.addWrappedLabel(16, y, Math.max(160, this.getScreenWidth() - 32),
+				StringUtils.translate(project.status().descriptionKey()));
 
 		if (project.pendingInvite()) {
 			this.addButton(new ButtonGeneric(x, y, -1, 20,
@@ -335,7 +350,7 @@ public class GuiSharedProjectDetails extends GuiBase implements SharingRefreshab
 
 	private enum Action {
 		DOWNLOAD_FOCUS, FOCUS, OPEN_PLACEMENT, DOWNLOAD, LOCAL_COPY, REPLACE, HELP, NOTIFICATIONS,
-		ACCEPT, DECLINE, PUBLIC_ACCESS,
+		ACCEPT, DECLINE, PUBLIC_ACCESS, PROJECT_STATUS,
 		REQUEST_ACCESS, CANCEL_REQUEST, CHOOSE_PLAYER,
 		MEMBER_ROLE, APPROVE_ACCESS, DECLINE_ACCESS, REMOVE_MEMBER, END_SHARING, LEAVE, BACK
 	}
@@ -382,6 +397,11 @@ public class GuiSharedProjectDetails extends GuiBase implements SharingRefreshab
 					SharedProjectView project = this.gui.sharing.project(this.gui.projectId);
 					if (project != null) this.gui.sharing.setPublicAccess(
 							this.gui.projectId, nextAccess(project.publicAccess()));
+				}
+				case PROJECT_STATUS -> {
+					SharedProjectView project = this.gui.sharing.project(this.gui.projectId);
+					if (project != null) this.gui.sharing.setProjectStatus(
+							this.gui.projectId, project.status().next());
 				}
 				case REQUEST_ACCESS -> this.gui.sharing.requestAccess(
 						this.gui.projectId, this.gui.requestPermissions);
