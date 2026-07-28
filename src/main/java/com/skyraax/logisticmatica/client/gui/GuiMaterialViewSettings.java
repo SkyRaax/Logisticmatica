@@ -25,12 +25,12 @@ public final class GuiMaterialViewSettings extends GuiBase {
 				? "logisticmatica.gui.material.order.descending"
 				: "logisticmatica.gui.material.order.ascending"), Action.ORDER);
 		y = this.option(y, "amount", Configs.Hud.MATERIAL_AMOUNT.getOptionListValue().getDisplayName(), Action.AMOUNT);
-		y = this.toggle(y, "hide_built", Configs.Hud.ONLY_MISSING.getBooleanValue(), Action.HIDE_BUILT);
-		y = this.toggle(y, "hide_supplied", Configs.Hud.HIDE_COMPLETE.getBooleanValue(), Action.HIDE_SUPPLIED);
-		y = this.toggle(y, "icons", Configs.Hud.SHOW_ITEM_ICONS.getBooleanValue(), Action.ICONS);
-		y = this.toggle(y, "header", Configs.Hud.SHOW_HEADER.getBooleanValue(), Action.HEADER);
-		y = this.toggle(y, "background", Configs.Hud.SHOW_BACKGROUND.getBooleanValue(), Action.BACKGROUND);
-		this.toggle(y, "in_guis", Configs.Hud.RENDER_IN_GUIS.getBooleanValue(), Action.IN_GUIS);
+		y = this.visibility(y, "hide_built", !Configs.Hud.ONLY_MISSING.getBooleanValue(), Action.HIDE_BUILT);
+		y = this.visibility(y, "hide_supplied", !Configs.Hud.HIDE_COMPLETE.getBooleanValue(), Action.HIDE_SUPPLIED);
+		y = this.visibility(y, "icons", Configs.Hud.SHOW_ITEM_ICONS.getBooleanValue(), Action.ICONS);
+		y = this.visibility(y, "header", Configs.Hud.SHOW_HEADER.getBooleanValue(), Action.HEADER);
+		y = this.visibility(y, "background", Configs.Hud.SHOW_BACKGROUND.getBooleanValue(), Action.BACKGROUND);
+		this.visibility(y, "in_guis", Configs.Hud.RENDER_IN_GUIS.getBooleanValue(), Action.IN_GUIS);
 
 		String back = StringUtils.translate("logisticmatica.gui.button.back");
 		this.addButton(new ButtonGeneric(this.getScreenWidth() - this.getStringWidth(back) - 30,
@@ -46,10 +46,11 @@ public final class GuiMaterialViewSettings extends GuiBase {
 		return y + 24;
 	}
 
-	private int toggle(int y, String key, boolean enabled, Action action) {
-		String state = StringUtils.translate(enabled
-				? "logisticmatica.gui.notifications.enabled"
-				: "logisticmatica.gui.notifications.disabled");
+	/** Labels always report the resulting visibility, never the implementation boolean. */
+	private int visibility(int y, String key, boolean visible, Action action) {
+		String state = StringUtils.translate(visible
+				? "logisticmatica.gui.material.visibility.shown"
+				: "logisticmatica.gui.material.visibility.hidden");
 		return this.option(y, key, state, action);
 	}
 

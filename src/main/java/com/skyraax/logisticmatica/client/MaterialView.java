@@ -18,9 +18,10 @@ public final class MaterialView {
 	public static List<MaterialListEntry> entries(MaterialListBase materialList) {
 		List<MaterialListEntry> entries = new ArrayList<>();
 		for (MaterialListEntry entry : materialList.getMaterialsAll()) {
-			int target = target(entry);
-			if (Configs.Hud.ONLY_MISSING.getBooleanValue() && entry.getCountMissing() <= 0) continue;
-			if (Configs.Hud.HIDE_COMPLETE.getBooleanValue() && entry.getCountAvailable() >= target) continue;
+			if (shouldHide(entry.getCountTotal(), entry.getCountMissing(), entry.getCountAvailable(),
+					(MaterialAmountMode) Configs.Hud.MATERIAL_AMOUNT.getOptionListValue(),
+					Configs.Hud.ONLY_MISSING.getBooleanValue(),
+					Configs.Hud.HIDE_COMPLETE.getBooleanValue())) continue;
 			entries.add(entry);
 		}
 
@@ -43,8 +44,25 @@ public final class MaterialView {
 
 	public static int target(MaterialListEntry entry) {
 		MaterialAmountMode mode = (MaterialAmountMode) Configs.Hud.MATERIAL_AMOUNT.getOptionListValue();
-		return mode == MaterialAmountMode.REMAINING ? Math.max(0, entry.getCountMissing())
-				: Math.max(0, entry.getCountTotal());
+		return target(entry.getCountTotal(), entry.getCountMissing(), mode);
+	}
+
+	public static int target(int total, int missing, MaterialAmountMode mode) {
+		return mode == MaterialAmountMode.REMAINING ? Math.max(0, missing) : Math.max(0, total);
+	}
+
+	/**
+	 * Keeps the two filters independent: a zero remaining target is controlled by "already built",
+	 * not treated as automatically supplied by the separate inventory/container filter.
+	 */
+	public static boolean shouldHide(int total, int missing, int available, MaterialAmountMode mode,
+			boolean hideBuilt, boolean hideSupplied) {
+		if (hideBuilt && missing <= 0) {
+			return true;
+		}
+
+		int target = target(total, missing, mode);
+		return hideSupplied && target > 0 && available >= target;
 	}
 
 	public static int shortage(MaterialListEntry entry) {
