@@ -20,16 +20,18 @@ before allocation.
 Server state is capped at 256 projects, 256 non-owner members per project, 65,536 tracked containers
 per project and 262,144 globally. These high ceilings are abuse and memory-safety boundaries rather
 than ordinary gameplay limits. Container state is no longer embedded in project-directory entries:
-subscribed clients receive snapshots and changes in packets of at most 64 containers, while each
+subscribed clients receive snapshots and changes in bounded packets, while each
 container snapshot remains limited to 256 distinct item types. Upload-time marks have no distance or
 loaded-chunk restriction.
 
 
 On join, the client sends `HELLO`. The server replies with the protocol version, feature mask,
-maximum schematic size, mod version and a persistent server UUID, then sends the complete project
-directory and online-player directory. The UUID namespaces the client's download cache so different
-servers cannot reuse one another's project files. Projects without `VIEW` expose only directory
-metadata; their hash, file size, substitutions, container counts and non-owner member roster are omitted.
+maximum schematic size, mod version and a persistent server UUID. It does not push either directory
+as part of the handshake. The project directory is requested only when the Projects screen is opened
+or a remembered active project must be restored; the online-player directory is requested only by the
+player picker. The UUID namespaces the client's download cache so different servers cannot reuse one
+another's project files. Projects without `VIEW` expose only directory metadata; their hash, file size,
+substitutions, container counts and non-owner member roster are omitted.
 
 ## Messages
 
@@ -53,9 +55,11 @@ Server to client events:
 
 Project updates carry a monotonically increasing revision. Mutations that could overwrite another
 editor's placement or schematic state include the expected revision; stale writes are rejected and
-the newest project list is returned. Containers use a separate monotonically increasing revision;
-volatile inventory refreshes therefore do not invalidate placement edits and a missed delta is
-recovered by requesting a fresh chunked snapshot.
+only that project's newest authoritative state is returned, at most once per player per second.
+Containers use a separate monotonically increasing revision; volatile inventory refreshes therefore
+do not invalidate placement edits. Pending changes for the same container are coalesced to its latest
+state before transmission. Fabric play packets are ordered, so the client can accept a revision jump;
+an over-bound queue is replaced by a fresh chunked snapshot.
 
 ## Permissions
 
@@ -152,19 +156,23 @@ local and are reported as a partial migration. Persisted local snapshots remain 
 fallback. An explicit Export Local Copy action writes an independent, server-named `.litematic` file;
 shared cache files and shared placements cannot be uploaded as new projects implicitly.
 For an owner, the destructive UI action is **End Sharing**, not deletion of local work. The client
-subscribes for one final authoritative container snapshot, the server removes the project and
-broadcasts PROJECT_REMOVED, other clients unload it, and the owner rebinds the existing placement
+subscribes for one final authoritative container snapshot, the server removes the project and sends
+`PROJECT_REMOVED` to the owner and currently active subscribers, and the owner rebinds the existing placement
 to its original local schematic when unchanged or to a newly exported authoritative local copy.
 Server-owned container bindings become persistent local marks before the subscription is cleared.
 
 For a shared schematic, the normal mark-container hotkey sends a server request instead of creating
 a private client mark. The server canonicalizes double chests, requires the player to be in the same
 dimension and within eight blocks. This proximity check applies only to a new manual mark, not to
-upload-time promotion. Only the active project is subscribed for container data. On subscription the
-server sends a bounded authoritative snapshot, then scans up to 64 registered positions per tick and
-broadcasts changed contents as ordered deltas to subscribed authorized clients. Switching or clearing
-focus unsubscribes and removes that project's projected bindings immediately; returning later starts
-with a current snapshot.
+upload-time promotion. A player can subscribe to exactly one active project. Unfocused players receive
+no container reads, snapshots, deltas or live project updates. On subscription the server queues an
+authoritative snapshot in chunks of at most 16 containers. Across the whole server no more than two
+container sync packets are emitted per tick, guarded by a two-millisecond work budget and round-robin
+fairness between players. Only projects with an authorized active subscriber are scanned: at most four
+registered positions every four ticks, additionally bounded by a 750-microsecond scan budget. Changed
+contents are coalesced per player and container before transmission. Switching or clearing focus
+unsubscribes and removes that project's projected bindings immediately; returning later starts with a
+current snapshot.
 
 The material list, world highlights, floating content labels and look-at peek follow the explicit
 Logisticmatica focus. Shared container totals use the project UUID scope, so authoritative server
@@ -183,7 +191,27 @@ layout remain configurable.
 Every project persists one status: Planning, Collecting Materials, Ready to Build, Building, Paused,
 Blocked or Completed. The status is visible even in directory metadata, so newcomers know whether
 materials are still needed or work should stop before downloading the schematic. Editors can update
-it; updates use the normal project revision and are broadcast to every directory viewer.
+it; updates use the normal project revision and are sent only to the actor and currently active
+subscribers. Other directory views obtain the current value on their next explicit refresh.
+
+## Tick budgets and persistence backpressure
+
+The server never waits for a client acknowledgement. Client mutations are queued onto the server
+thread, validated and answered authoritatively, but pending inbound work is capped at 32 tasks per
+player and execution at eight sharing actions per player and tick. Placement transforms are accepted
+only from the client's focused shared placement, debounced for four client ticks and limited to one
+in-flight mutation until the authoritative response arrives or times out.
+
+Project changes are coalesced by project and delivered with a global budget of four project packets
+per tick. Recipients are the actor and authorized players actively subscribed to that project, not all
+online players. Container snapshots and deltas use their own stricter budget described above. This
+keeps a large or slow subscriber from creating an unbounded packet burst for everyone else.
+
+Persistent project state is marked dirty immediately but captured at most once every 100 server ticks.
+The resulting immutable JSON bytes are written and atomically replaced on one daemon writer thread;
+while a write is running, only the newest pending image is retained. Server shutdown performs a bounded
+final flush. Consequently a frequently changing inventory no longer writes the complete project store
+from the server tick that detected each change.
 
 
 ## Client notifications and persistence

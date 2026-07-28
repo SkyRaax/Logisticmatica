@@ -14,6 +14,9 @@ import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import javax.annotation.Nullable;
 
 import com.google.gson.Gson;
@@ -36,11 +39,25 @@ import com.skyraax.logisticmatica.share.ShareProtocol;
 public final class ShareStore {
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
 	private static final long MAX_DECOMPRESSED_NBT_BYTES = 256L * 1024L * 1024L;
+	private static final long SAVE_INTERVAL_TICKS = 100L;
+	private static final long STOP_FLUSH_TIMEOUT_MILLIS = 10_000L;
 
 	private final Map<UUID, SharedProject> projects = new LinkedHashMap<>();
+	private final Object writeLock = new Object();
+	private final ExecutorService writer = Executors.newSingleThreadExecutor(task -> {
+		Thread thread = new Thread(task, "Logisticmatica store writer");
+		thread.setDaemon(true);
+		return thread;
+	});
 	private UUID serverId = UUID.randomUUID();
 	@Nullable private Path root;
 	@Nullable private Path blobs;
+	@Nullable private WriteRequest pendingWrite;
+	private boolean writerRunning;
+	private volatile boolean dirty;
+	private long nextSaveTick;
+
+	private record WriteRequest(Path target, byte[] bytes) {}
 
 	public Collection<SharedProject> projects() {
 		return this.projects.values();
@@ -68,6 +85,8 @@ public final class ShareStore {
 		this.root = server.getWorldPath(LevelResource.ROOT).resolve("data").resolve(Logisticmatica.MOD_ID);
 		this.blobs = this.root.resolve("schematics");
 		this.projects.clear();
+		this.dirty = false;
+		this.nextSaveTick = 0L;
 
 		this.serverId = UUID.randomUUID();
 		try {
@@ -79,7 +98,7 @@ public final class ShareStore {
 	}
 
 	public void stop() {
-		this.save();
+		this.flushNow();
 		this.projects.clear();
 		this.root = null;
 		this.blobs = null;
@@ -116,7 +135,48 @@ public final class ShareStore {
 		return Files.readAllBytes(file);
 	}
 
+	/** Marks the store dirty. Runtime disk I/O is coalesced and performed off the server thread. */
 	public void save() {
+		if (this.root != null) {
+			this.dirty = true;
+		}
+	}
+
+	/** Captures at most one immutable persistence image per interval and queues its disk write. */
+	public void tick(long serverTick) {
+		if (!this.dirty || this.root == null || serverTick < this.nextSaveTick) {
+			return;
+		}
+		this.enqueueCurrentState();
+		this.nextSaveTick = serverTick + SAVE_INTERVAL_TICKS;
+	}
+
+	private void flushNow() {
+		if (this.root == null) {
+			return;
+		}
+		if (this.dirty) {
+			this.enqueueCurrentState();
+		}
+		long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(STOP_FLUSH_TIMEOUT_MILLIS);
+		synchronized (this.writeLock) {
+			while ((this.writerRunning || this.pendingWrite != null) && System.nanoTime() < deadline) {
+				try {
+					long remaining = Math.max(1L, TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime()));
+					this.writeLock.wait(remaining);
+				} catch (InterruptedException e) {
+					Thread.currentThread().interrupt();
+					break;
+				}
+			}
+			if (this.writerRunning || this.pendingWrite != null) {
+				Logisticmatica.LOGGER.warn("[{}] Timed out waiting for the sharing store writer during shutdown.",
+						Logisticmatica.MOD_NAME);
+			}
+		}
+	}
+
+	private void enqueueCurrentState() {
 		if (this.root == null) {
 			return;
 		}
@@ -130,11 +190,43 @@ public final class ShareStore {
 		}
 		rootJson.add("projects", projectsJson);
 
-		try {
-			Files.createDirectories(this.root);
-			writeAtomically(this.root.resolve("projects.json"), GSON.toJson(rootJson).getBytes(StandardCharsets.UTF_8));
-		} catch (IOException e) {
-			Logisticmatica.LOGGER.error("[{}] Could not save sharing store: {}", Logisticmatica.MOD_NAME, e.getMessage(), e);
+		byte[] bytes = GSON.toJson(rootJson).getBytes(StandardCharsets.UTF_8);
+		this.dirty = false;
+		this.enqueueWrite(new WriteRequest(this.root.resolve("projects.json"), bytes));
+	}
+
+	private void enqueueWrite(WriteRequest request) {
+		synchronized (this.writeLock) {
+			// Latest state wins while an older image is still being written. This bounds the queue to one image.
+			this.pendingWrite = request;
+			if (this.writerRunning) {
+				return;
+			}
+			this.writerRunning = true;
+			this.writer.execute(this::drainWrites);
+		}
+	}
+
+	private void drainWrites() {
+		while (true) {
+			WriteRequest request;
+			synchronized (this.writeLock) {
+				request = this.pendingWrite;
+				this.pendingWrite = null;
+				if (request == null) {
+					this.writerRunning = false;
+					this.writeLock.notifyAll();
+					return;
+				}
+			}
+			try {
+				Files.createDirectories(request.target().getParent());
+				writeAtomically(request.target(), request.bytes());
+			} catch (IOException e) {
+				this.dirty = true;
+				Logisticmatica.LOGGER.error("[{}] Could not save sharing store: {}",
+						Logisticmatica.MOD_NAME, e.getMessage(), e);
+			}
 		}
 	}
 

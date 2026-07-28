@@ -24,6 +24,7 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.Rotation;
 
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 
@@ -70,6 +71,8 @@ import com.skyraax.logisticmatica.share.SharedProjectView;
 /** Client bridge between the authoritative server model and real Litematica placements. */
 public final class ClientShareManager implements ISchematicPlacementEventListener {
 	private static final ClientShareManager INSTANCE = new ClientShareManager();
+	private static final int TRANSFORM_DEBOUNCE_TICKS = 4;
+	private static final int TRANSFORM_RESPONSE_TIMEOUT_TICKS = 40;
 	private static final IStringConsumer SILENT_STRING = ignored -> {};
 	private static final IMessageConsumer SILENT_MESSAGE = new IMessageConsumer() {
 		@Override
@@ -95,12 +98,21 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 	private boolean serverAvailable;
 	@Nullable private UUID serverId;
 	private boolean applyingRemote;
+	private boolean projectsRequestedWhenReady;
 	private String serverVersion = "";
 	private int serverFeatures;
 	private int serverMaxBytes = ShareProtocol.MAX_SCHEMATIC_BYTES;
+	private long clientTicks;
+	private long pendingTransformAt;
+	@Nullable private PendingTransform pendingTransform;
+	@Nullable private UUID transformInFlightProject;
+	private long transformInFlightRevision;
+	private long transformInFlightDeadline;
 
 	private ClientShareManager() {}
 
+	private record PendingTransform(UUID projectId, String dimension, int x, int y, int z,
+			int rotation, int mirror) {}
 	private record PendingCreate(SchematicPlacement placement, byte[] schematicBytes,
 			Set<BlockPos> localContainers) {}
 	private record OwnerDetachment(String previousKey, String localKey) {}
@@ -120,6 +132,7 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 				context.client().execute(() -> INSTANCE.handle(payload)));
 		ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> INSTANCE.onJoin());
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> INSTANCE.reset());
+		ClientTickEvents.END_CLIENT_TICK.register(INSTANCE::onClientTick);
 		SchematicPlacementEventHandler.getInstance().registerSchematicPlacementEventListener(
 				INSTANCE, List.of(SchematicPlacementEventFlag.ALL_EVENTS));
 	}
@@ -156,6 +169,12 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 	/** Persists the active server workspace and updates its live container subscription. */
 	public void onFocusChanged(@Nullable UUID projectId) {
 		this.rememberActiveProject(projectId);
+		if (this.pendingTransform != null && !this.pendingTransform.projectId().equals(projectId)) {
+			this.pendingTransform = null;
+		}
+		if (!Objects.equals(this.transformInFlightProject, projectId)) {
+			this.transformInFlightProject = null;
+		}
 		this.syncContainers();
 	}
 
@@ -214,6 +233,10 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 		this.snapshotPromotions.clear();
 		this.exportAfterDownload.clear();
 		this.pendingEndSharing.clear();
+		this.projectsRequestedWhenReady = false;
+		this.pendingTransform = null;
+		this.transformInFlightProject = null;
+		this.clientTicks = 0L;
 		ProjectNotificationSettings.getInstance().reset();
 		this.refreshScreen();
 	}
@@ -259,8 +282,14 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 		this.serverId = r.readUuid();
 		ProjectNotificationSettings.getInstance().activateServer(this.serverId);
 		r.requireFinished();
-		if (this.serverAvailable) InfoUtils.showGuiOrInGameMessage(MessageType.SUCCESS,
-				"logisticmatica.share.notice.handshake", this.serverVersion);
+		if (this.serverAvailable) {
+			InfoUtils.showGuiOrInGameMessage(MessageType.SUCCESS,
+					"logisticmatica.share.notice.handshake", this.serverVersion);
+			if (this.projectsRequestedWhenReady || this.readActiveProject() != null) {
+				this.projectsRequestedWhenReady = false;
+				this.refreshProjects();
+			}
+		}
 	}
 
 	private void handleProjects(byte[] body) throws IOException {
@@ -325,10 +354,8 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 		if (!this.subscriptions.contains(delta.projectId())) return;
 		long current = this.containerRevisions.getOrDefault(delta.projectId(), 0L);
 		if (delta.revision() <= current) return;
-		if (current != 0L && delta.revision() != current + 1L) {
-			this.requestContainerSnapshot(delta.projectId());
-			return;
-		}
+		// The server coalesces every pending key into a latest-wins delta. Ordered play transport
+		// therefore permits a revision jump without losing an intermediate container state.
 		SharedProjectView project = this.projects.get(delta.projectId());
 		Minecraft mc = Minecraft.getInstance();
 		if (project == null || mc.level == null
@@ -379,6 +406,10 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 		List<SharedProjectView> changed = ShareWire.decodeProjects(body);
 		if (changed.size() != 1) throw new IOException("Expected one changed project");
 		SharedProjectView project = changed.getFirst();
+		if (project.id().equals(this.transformInFlightProject)
+				&& project.revision() > this.transformInFlightRevision) {
+			this.transformInFlightProject = null;
+		}
 		SharedProjectView previous = this.projects.put(project.id(), project);
 		PendingCreate pending = this.pendingCreates.remove(requestId);
 		if (pending != null) {
@@ -659,6 +690,14 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 			if (from != null && to != null) blocks.put(from, to);
 		}
 		SubstitutionManager.getInstance().replaceAll(schematic, blocks);
+	}
+
+	public void loadProjectsOnDemand() {
+		if (this.serverAvailable) {
+			this.refreshProjects();
+		} else {
+			this.projectsRequestedWhenReady = true;
+		}
 	}
 
 	public void refreshProjects() {
@@ -1080,21 +1119,53 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 	public void onPlacementUpdated(SchematicPlacement placement) {
 		if (this.applyingRemote) return;
 		SharedProjectView project = this.projects.get(placement.getHashId());
-		if (project == null || !project.can(SharePermission.MOVE)) return;
+		if (project == null || !project.can(SharePermission.MOVE)
+				|| !project.id().equals(FocusState.getProjectId())
+				|| !FocusController.isFocused(placement)) return;
 		Minecraft mc = Minecraft.getInstance();
 		if (mc.level == null) return;
 		BlockPos origin = placement.getOrigin();
+		this.pendingTransform = new PendingTransform(project.id(),
+				mc.level.dimension().identifier().toString(), origin.getX(), origin.getY(), origin.getZ(),
+				placement.getRotation().ordinal(), placement.getMirror().ordinal());
+		this.pendingTransformAt = this.clientTicks + TRANSFORM_DEBOUNCE_TICKS;
+	}
+
+	private void onClientTick(Minecraft mc) {
+		this.clientTicks++;
+		PendingTransform pending = this.pendingTransform;
+		if (pending == null || this.clientTicks < this.pendingTransformAt || mc.level == null) return;
+		if (pending.projectId().equals(this.transformInFlightProject)
+				&& this.clientTicks < this.transformInFlightDeadline) return;
+		if (pending.projectId().equals(this.transformInFlightProject)) {
+			this.transformInFlightProject = null;
+		}
+
+		SharedProjectView project = this.projects.get(pending.projectId());
+		SchematicPlacement placement = this.placements.get(pending.projectId());
+		if (project == null || placement == null || !project.can(SharePermission.MOVE)
+				|| !pending.projectId().equals(FocusState.getProjectId())
+				|| !FocusController.isFocused(placement)
+				|| !pending.dimension().equals(mc.level.dimension().identifier().toString())) {
+			this.pendingTransform = null;
+			return;
+		}
+
 		byte[] body = ShareWire.encode(w -> {
 			w.writeUuid(project.id());
 			w.writeLong(project.revision());
-			w.writeString(mc.level.dimension().identifier().toString());
-			w.writeInt(origin.getX());
-			w.writeInt(origin.getY());
-			w.writeInt(origin.getZ());
-			w.writeInt(placement.getRotation().ordinal());
-			w.writeInt(placement.getMirror().ordinal());
+			w.writeString(pending.dimension());
+			w.writeInt(pending.x());
+			w.writeInt(pending.y());
+			w.writeInt(pending.z());
+			w.writeInt(pending.rotation());
+			w.writeInt(pending.mirror());
 		});
 		this.send(ServerboundSharePayload.of(ShareProtocol.ServerboundAction.UPDATE_TRANSFORM, body));
+		this.pendingTransform = null;
+		this.transformInFlightProject = project.id();
+		this.transformInFlightRevision = project.revision();
+		this.transformInFlightDeadline = this.clientTicks + TRANSFORM_RESPONSE_TIMEOUT_TICKS;
 	}
 
 	@Override

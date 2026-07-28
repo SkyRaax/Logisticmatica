@@ -48,6 +48,7 @@ public class GuiProjects extends GuiListBase<GuiProjects.ProjectEntry, GuiProjec
 		super(10, 68);
 		this.useTitleHierarchy = false;
 		this.updateTitle();
+		this.sharing.loadProjectsOnDemand();
 	}
 
 	private void updateTitle() {

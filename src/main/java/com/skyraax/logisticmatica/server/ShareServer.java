@@ -1,15 +1,21 @@
 package com.skyraax.logisticmatica.server;
 
 import java.io.IOException;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Deque;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import javax.annotation.Nullable;
 
 import net.minecraft.core.BlockPos;
@@ -46,26 +52,117 @@ import com.skyraax.logisticmatica.share.SharedProjectView;
 public final class ShareServer {
 	private static final ShareServer INSTANCE = new ShareServer();
 	private static final String ADMIN_PERMISSION = Logisticmatica.MOD_ID + ".admin";
-	private static final int CONTAINER_SCANS_PER_TICK = ShareProtocol.MAX_CONTAINER_CHANGES_PER_PACKET;
+	private static final int CONTAINER_SCANS_PER_PASS = 4;
+	private static final int CONTAINER_SCAN_INTERVAL_TICKS = 4;
+	private static final long CONTAINER_SCAN_BUDGET_NANOS = 750_000L;
+	private static final int SNAPSHOT_CONTAINERS_PER_PACKET = 16;
+	private static final int SYNC_PACKETS_PER_TICK = 2;
+	private static final long SYNC_WORK_BUDGET_NANOS = 2_000_000L;
+	private static final int PROJECT_PACKETS_PER_TICK = 4;
+	private static final int MAX_PENDING_CLIENT_ACTIONS = 32;
+	private static final int MAX_CLIENT_ACTIONS_PER_TICK = 8;
 	private static final double CONTAINER_BIND_DISTANCE_SQ = 64.0;
 
 	private final ShareStore store = new ShareStore();
 	private record ContainerScanTarget(SharedProject project, SharedProject.ContainerKey key) {}
+	private static final class PendingSnapshot {
+		private final UUID projectId;
+		private final UUID requestId;
+		private final long revision;
+		private final List<SharedProject.ContainerKey> keys;
+		private int cursor;
+
+		private PendingSnapshot(SharedProject project, UUID requestId) {
+			this.projectId = project.id();
+			this.requestId = requestId;
+			this.revision = project.containerRevision();
+			this.keys = List.copyOf(project.containers().keySet());
+		}
+	}
+	static final class PendingDelta {
+		private final UUID projectId;
+		private long revision;
+		private final Map<SharedContainerKey, SharedContainerView> upserts = new LinkedHashMap<>();
+		private final Set<SharedContainerKey> removals = new LinkedHashSet<>();
+
+		PendingDelta(UUID projectId) {
+			this.projectId = projectId;
+		}
+
+		boolean merge(long revision, List<SharedContainerView> changed,
+				List<SharedContainerKey> removed) {
+			this.revision = Math.max(this.revision, revision);
+			for (SharedContainerKey key : removed) {
+				this.upserts.remove(key);
+				this.removals.add(key);
+			}
+			for (SharedContainerView container : changed) {
+				SharedContainerKey key = wireKey(container);
+				this.removals.remove(key);
+				this.upserts.put(key, container);
+			}
+			return this.upserts.size() + this.removals.size()
+					<= ShareProtocol.MAX_CONTAINER_CHANGES_PER_PACKET;
+		}
+
+		long revision() { return this.revision; }
+		List<SharedContainerView> upserts() { return List.copyOf(this.upserts.values()); }
+		List<SharedContainerKey> removals() { return List.copyOf(this.removals); }
+	}
+
+	static final class ActionWindow {
+		private long tick = Long.MIN_VALUE;
+		private int actions;
+
+		boolean allow(long currentTick) {
+			if (this.tick != currentTick) {
+				this.tick = currentTick;
+				this.actions = 0;
+			}
+			return ++this.actions <= MAX_CLIENT_ACTIONS_PER_TICK;
+		}
+	}
+
 	private List<ContainerScanTarget> containerScanOrder = List.of();
 	private boolean containerScanDirty = true;
 	private int containerScanCursor;
-	private final Map<UUID, Set<UUID>> subscriptions = new HashMap<>();
+	private long nextContainerScanTick;
+	private final Map<UUID, UUID> subscriptions = new HashMap<>();
+	private final Map<UUID, PendingSnapshot> pendingSnapshots = new HashMap<>();
+	private final Map<UUID, PendingDelta> pendingDeltas = new HashMap<>();
+	private final Deque<UUID> outboundPlayers = new ArrayDeque<>();
+	private final Set<UUID> outboundQueued = new HashSet<>();
+	private final Map<UUID, Set<UUID>> pendingProjectRecipients = new LinkedHashMap<>();
+	private final Map<UUID, AtomicInteger> pendingInbound = new ConcurrentHashMap<>();
+	private final Map<UUID, Long> staleResyncTicks = new HashMap<>();
+	private final Map<UUID, ActionWindow> actionWindows = new HashMap<>();
 	@Nullable private MinecraftServer server;
 
 	private ShareServer() {
 	}
 
 	public static void register() {
-		ServerPlayNetworking.registerGlobalReceiver(ServerboundSharePayload.TYPE, (payload, context) ->
-				context.server().execute(() -> INSTANCE.handle(payload, context.player())));
+		ServerPlayNetworking.registerGlobalReceiver(ServerboundSharePayload.TYPE, (payload, context) -> {
+			UUID playerId = context.player().getUUID();
+			AtomicInteger pending = INSTANCE.pendingInbound.computeIfAbsent(playerId,
+					ignored -> new AtomicInteger());
+			if (pending.incrementAndGet() > MAX_PENDING_CLIENT_ACTIONS) {
+				pending.decrementAndGet();
+				return;
+			}
+			context.server().execute(() -> {
+				try {
+					INSTANCE.handle(payload, context.player());
+				} finally {
+					if (pending.decrementAndGet() == 0) {
+						INSTANCE.pendingInbound.remove(playerId, pending);
+					}
+				}
+			});
+		});
 		ServerLifecycleEvents.SERVER_STARTED.register(INSTANCE::onServerStarted);
 		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) ->
-				INSTANCE.subscriptions.remove(handler.getPlayer().getUUID()));
+				INSTANCE.disconnect(handler.getPlayer().getUUID()));
 		ServerLifecycleEvents.SERVER_STOPPING.register(INSTANCE::onServerStopping);
 		ServerTickEvents.END_SERVER_TICK.register(INSTANCE::onServerTick);
 	}
@@ -74,7 +171,16 @@ public final class ShareServer {
 		this.server = server;
 		this.store.start(server);
 		this.containerScanCursor = 0;
+		this.nextContainerScanTick = 0L;
 		this.subscriptions.clear();
+		this.pendingSnapshots.clear();
+		this.pendingDeltas.clear();
+		this.outboundPlayers.clear();
+		this.outboundQueued.clear();
+		this.pendingProjectRecipients.clear();
+		this.pendingInbound.clear();
+		this.staleResyncTicks.clear();
+		this.actionWindows.clear();
 		this.containerScanDirty = true;
 	}
 
@@ -84,11 +190,24 @@ public final class ShareServer {
 		this.containerScanOrder = List.of();
 		this.containerScanDirty = true;
 		this.subscriptions.clear();
+		this.pendingSnapshots.clear();
+		this.pendingDeltas.clear();
+		this.outboundPlayers.clear();
+		this.outboundQueued.clear();
+		this.pendingProjectRecipients.clear();
+		this.pendingInbound.clear();
+		this.staleResyncTicks.clear();
+		this.actionWindows.clear();
 	}
 
 	private void handle(ServerboundSharePayload payload, ServerPlayer player) {
 		if (payload.protocolVersion() != ShareProtocol.VERSION) {
 			this.sendError(player, payload.requestId(), "logisticmatica.share.error.protocol");
+			return;
+		}
+		MinecraftServer server = this.server;
+		if (server == null || !this.actionWindows.computeIfAbsent(player.getUUID(),
+				ignored -> new ActionWindow()).allow(server.getTickCount())) {
 			return;
 		}
 
@@ -137,8 +256,6 @@ public final class ShareServer {
 			writer.writeUuid(this.store.serverId());
 		});
 		this.send(player, ClientboundSharePayload.of(ShareProtocol.ClientboundEvent.HELLO, payload.requestId(), body));
-		this.sendProjects(player, UUID.randomUUID());
-		this.sendPlayers(player, UUID.randomUUID());
 		Logisticmatica.LOGGER.debug("[{}] Sharing handshake with {} (client {}).",
 				Logisticmatica.MOD_NAME, player.getName().getString(), clientVersion);
 	}
@@ -180,7 +297,6 @@ public final class ShareServer {
 		this.store.put(project);
 		this.containerScanDirty = true;
 		this.store.save();
-		this.sendProjectChanged(project);
 		this.sendProject(player, project, payload.requestId());
 		this.sendNotice(player, payload.requestId(), "logisticmatica.share.notice.created");
 	}
@@ -248,19 +364,17 @@ public final class ShareServer {
 		if (project == null) {
 			return;
 		}
-		this.subscriptions.computeIfAbsent(player.getUUID(), ignored -> new LinkedHashSet<>()).add(projectId);
-		this.sendContainerSnapshot(player, project, payload.requestId());
+		this.subscriptions.put(player.getUUID(), projectId);
+		this.queueSnapshot(player, project, payload.requestId());
+		this.containerScanDirty = true;
 	}
 
 	private void handleUnsubscribe(ServerPlayer player, ServerboundSharePayload payload) throws IOException {
 		UUID projectId = readProjectId(payload.body());
-		Set<UUID> projects = this.subscriptions.get(player.getUUID());
-		if (projects == null) {
-			return;
-		}
-		projects.remove(projectId);
-		if (projects.isEmpty()) {
+		if (projectId.equals(this.subscriptions.get(player.getUUID()))) {
 			this.subscriptions.remove(player.getUUID());
+			this.cancelPlayerSync(player.getUUID());
+			this.containerScanDirty = true;
 		}
 	}
 
@@ -282,7 +396,7 @@ public final class ShareServer {
 			return;
 		}
 		project.updateTransform(dimension, x, y, z, rotation, mirror);
-		this.changed(project);
+		this.changed(project, player);
 	}
 
 	private void handleSchematicUpdate(ServerPlayer player, ServerboundSharePayload payload) throws IOException {
@@ -298,7 +412,7 @@ public final class ShareServer {
 		}
 		String hash = this.store.storeSchematic(schematic);
 		project.updateSchematic(hash, schematic.length);
-		this.changed(project);
+		this.changed(project, player);
 		this.sendNotice(player, payload.requestId(), "logisticmatica.share.notice.schematic_updated");
 	}
 
@@ -319,7 +433,7 @@ public final class ShareServer {
 			}
 		}
 		project.replaceSubstitutions(substitutions);
-		this.changed(project);
+		this.changed(project, player);
 	}
 
 	private void handleInvite(ServerPlayer player, ServerboundSharePayload payload) throws IOException {
@@ -352,7 +466,7 @@ public final class ShareServer {
 		int grantable = this.isAdministrator(player) || project.ownerId().equals(player.getUUID())
 				? SharePermission.ALL : project.permissionsFor(player.getUUID());
 		project.invite(target.getUUID(), target.getName().getString(), requestedPermissions & grantable);
-		this.changed(project);
+		this.changed(project, player);
 		this.sendNotice(target, UUID.randomUUID(), "logisticmatica.share.notice.invited");
 	}
 
@@ -368,7 +482,7 @@ public final class ShareServer {
 			return;
 		}
 		project.respondToInvite(player.getUUID(), accepted);
-		this.changed(project);
+		this.changed(project, player);
 	}
 
 	private void handlePublicAccess(ServerPlayer player, ServerboundSharePayload payload) throws IOException {
@@ -382,7 +496,8 @@ public final class ShareServer {
 				SharePermission.MANAGE_PERMISSIONS, payload.requestId());
 		if (!this.checkRevision(player, project, expectedRevision, payload.requestId())) return;
 		project.setPublicAccess(access);
-		this.changed(project);
+		this.changed(project, player);
+		this.containerScanDirty = true;
 		this.sendNotice(player, payload.requestId(), "logisticmatica.share.notice.public_access_updated");
 	}
 
@@ -397,7 +512,7 @@ public final class ShareServer {
 				SharePermission.UPDATE_STATUS, payload.requestId());
 		if (!this.checkRevision(player, project, expectedRevision, payload.requestId())) return;
 		project.setStatus(status);
-		this.changed(project);
+		this.changed(project, player);
 		this.sendNotice(player, payload.requestId(), "logisticmatica.share.notice.status_updated");
 	}
 
@@ -423,7 +538,7 @@ public final class ShareServer {
 			return;
 		}
 		project.requestAccess(player.getUUID(), player.getName().getString(), requestedPermissions);
-		this.changed(project);
+		this.changed(project, player);
 		this.sendNotice(player, payload.requestId(), "logisticmatica.share.notice.access_requested");
 		MinecraftServer server = this.server;
 		ServerPlayer owner = server != null ? server.getPlayerList().getPlayer(project.ownerId()) : null;
@@ -450,7 +565,7 @@ public final class ShareServer {
 			this.sendError(player, payload.requestId(), "logisticmatica.share.error.no_access_request");
 			return;
 		}
-		this.changed(project);
+		this.changed(project, player);
 		MinecraftServer server = this.server;
 		ServerPlayer target = server != null ? server.getPlayerList().getPlayer(targetId) : null;
 		if (target != null) this.sendNotice(target, UUID.randomUUID(), accepted
@@ -473,7 +588,8 @@ public final class ShareServer {
 		int grantable = this.isAdministrator(player) || project.ownerId().equals(player.getUUID())
 				? SharePermission.ALL : project.permissionsFor(player.getUUID());
 		project.setPermissions(targetId, requestedPermissions & grantable);
-		this.changed(project);
+		this.changed(project, player);
+		this.containerScanDirty = true;
 	}
 
 	private void handleRemoveMember(ServerPlayer player, ServerboundSharePayload payload) throws IOException {
@@ -487,7 +603,8 @@ public final class ShareServer {
 			this.sendError(player, payload.requestId(), "logisticmatica.share.error.permissions");
 			return;
 		}
-		this.changed(project);
+		this.changed(project, player);
+		this.containerScanDirty = true;
 	}
 
 
@@ -497,12 +614,24 @@ public final class ShareServer {
 		if (project == null) {
 			return;
 		}
+		Set<UUID> recipients = new LinkedHashSet<>();
+		recipients.add(player.getUUID());
+		this.subscriptions.forEach((playerId, subscribedProject) -> {
+			if (projectId.equals(subscribedProject)) recipients.add(playerId);
+		});
 		this.store.remove(projectId);
 		this.containerScanDirty = true;
-		this.subscriptions.values().forEach(projects -> projects.remove(projectId));
+		this.subscriptions.entrySet().removeIf(entry -> projectId.equals(entry.getValue()));
+		this.pendingSnapshots.entrySet().removeIf(entry -> projectId.equals(entry.getValue().projectId));
+		this.pendingDeltas.entrySet().removeIf(entry -> projectId.equals(entry.getValue().projectId));
+		this.pendingProjectRecipients.remove(projectId);
 		this.store.save();
-		for (ServerPlayer online : player.level().getServer().getPlayerList().getPlayers()) {
-			this.sendRemoved(online, projectId);
+		MinecraftServer server = this.server;
+		if (server != null) {
+			for (UUID recipient : recipients) {
+				ServerPlayer online = server.getPlayerList().getPlayer(recipient);
+				if (online != null) this.sendRemoved(online, projectId);
+			}
 		}
 	}
 
@@ -513,7 +642,8 @@ public final class ShareServer {
 			this.sendError(player, payload.requestId(), "logisticmatica.share.error.cannot_leave");
 			return;
 		}
-		this.changed(project);
+		this.changed(project, player);
+		this.containerScanDirty = true;
 	}
 
 	private void handleContainerToggle(ServerPlayer player, ServerboundSharePayload payload) throws IOException {
@@ -564,7 +694,8 @@ public final class ShareServer {
 			project.putContainer(key, snapshot);
 			nowMarked = true;
 		}
-		this.changed(project);
+		this.changed(project, player);
+		this.containerScanDirty = true;
 		if (nowMarked) {
 			this.sendContainerDelta(project, List.of(project.containerView(key)), List.of());
 		} else {
@@ -597,28 +728,40 @@ public final class ShareServer {
 	}
 
 	private void onServerTick(MinecraftServer server) {
-		if (this.containerScanDirty) this.rebuildContainerScanOrder();
+		long tick = server.getTickCount();
+		this.store.tick(tick);
+		this.flushProjectUpdates(server);
+		this.flushOutboundSync(server);
+		if (tick < this.nextContainerScanTick) {
+			return;
+		}
+		this.nextContainerScanTick = tick + CONTAINER_SCAN_INTERVAL_TICKS;
+		if (this.containerScanDirty) this.rebuildContainerScanOrder(server);
 		int total = this.containerScanOrder.size();
 		if (total == 0) {
 			this.containerScanCursor = 0;
 			return;
 		}
 		int start = Math.floorMod(this.containerScanCursor, total);
-		int budget = Math.min(CONTAINER_SCANS_PER_TICK, total);
+		int budget = Math.min(CONTAINER_SCANS_PER_PASS, total);
+		long deadline = System.nanoTime() + CONTAINER_SCAN_BUDGET_NANOS;
+		int scanned = 0;
 		Map<SharedProject, List<SharedProject.ContainerKey>> changed = new LinkedHashMap<>();
 		for (int offset = 0; offset < budget; offset++) {
+			if (offset > 0 && System.nanoTime() >= deadline) break;
 			ContainerScanTarget target = this.containerScanOrder.get((start + offset) % total);
 			SharedProject project = target.project();
 			SharedProject.ContainerKey key = target.key();
 			ServerLevel level = ServerContainerAccess.level(server, key.dimension());
 			Map<String, Integer> snapshot = level != null ? ServerContainerAccess.snapshot(level,
 					new BlockPos(key.x(), key.y(), key.z())) : null;
+			scanned++;
 			if (snapshot != null && snapshot.size() <= ShareProtocol.MAX_ITEM_TYPES_PER_CONTAINER
 					&& project.refreshContainer(key, snapshot)) {
 				changed.computeIfAbsent(project, ignored -> new ArrayList<>()).add(key);
 			}
 		}
-		this.containerScanCursor = (start + budget) % total;
+		if (scanned > 0) this.containerScanCursor = (start + scanned) % total;
 		if (!changed.isEmpty()) {
 			for (Map.Entry<SharedProject, List<SharedProject.ContainerKey>> entry : changed.entrySet()) {
 				entry.getKey().commitContainerRefresh();
@@ -629,9 +772,28 @@ public final class ShareServer {
 		}
 	}
 
-	private void rebuildContainerScanOrder() {
-		List<ContainerScanTarget> order = new ArrayList<>(this.totalContainerCount());
+	private void rebuildContainerScanOrder(MinecraftServer server) {
+		Set<UUID> activeProjects = new HashSet<>();
+		Iterator<Map.Entry<UUID, UUID>> subscriptions = this.subscriptions.entrySet().iterator();
+		while (subscriptions.hasNext()) {
+			Map.Entry<UUID, UUID> entry = subscriptions.next();
+			ServerPlayer player = server.getPlayerList().getPlayer(entry.getKey());
+			SharedProject project = this.store.get(entry.getValue());
+			if (player == null || project == null
+					|| (!this.isAdministrator(player) && !project.can(player.getUUID(), SharePermission.VIEW))) {
+				subscriptions.remove();
+				this.cancelPlayerSync(entry.getKey());
+				continue;
+			}
+			activeProjects.add(entry.getValue());
+		}
+		for (PendingSnapshot snapshot : this.pendingSnapshots.values()) {
+			activeProjects.remove(snapshot.projectId);
+		}
+
+		List<ContainerScanTarget> order = new ArrayList<>();
 		for (SharedProject project : this.store.projects()) {
+			if (!activeProjects.contains(project.id())) continue;
 			for (SharedProject.ContainerKey key : project.containers().keySet()) {
 				order.add(new ContainerScanTarget(project, key));
 			}
@@ -645,10 +807,10 @@ public final class ShareServer {
 		return this.store.projects().stream().mapToInt(project -> project.containers().size()).sum();
 	}
 
-	private void changed(SharedProject project) {
+	private void changed(SharedProject project, ServerPlayer actor) {
 		this.store.save();
-		this.containerScanDirty = true;
-		this.sendProjectChanged(project);
+		this.pendingProjectRecipients.computeIfAbsent(project.id(), ignored -> new LinkedHashSet<>())
+				.add(actor.getUUID());
 	}
 
 	private void sendProjects(ServerPlayer player, UUID requestId) {
@@ -673,13 +835,28 @@ public final class ShareServer {
 				requestId, ShareWire.encodePlayers(players)));
 	}
 
-	private void sendProjectChanged(SharedProject project) {
-		MinecraftServer server = this.server;
-		if (server == null) {
-			return;
-		}
-		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-			this.sendProject(player, project, UUID.randomUUID());
+	private void flushProjectUpdates(MinecraftServer server) {
+		int budget = PROJECT_PACKETS_PER_TICK;
+		Iterator<Map.Entry<UUID, Set<UUID>>> updates = this.pendingProjectRecipients.entrySet().iterator();
+		while (updates.hasNext() && budget > 0) {
+			Map.Entry<UUID, Set<UUID>> update = updates.next();
+			SharedProject project = this.store.get(update.getKey());
+			if (project == null) {
+				updates.remove();
+				continue;
+			}
+			this.subscriptions.forEach((playerId, projectId) -> {
+				if (project.id().equals(projectId)) update.getValue().add(playerId);
+			});
+			Iterator<UUID> recipients = update.getValue().iterator();
+			while (recipients.hasNext() && budget > 0) {
+				ServerPlayer player = server.getPlayerList().getPlayer(recipients.next());
+				recipients.remove();
+				if (player == null) continue;
+				this.sendProject(player, project, UUID.randomUUID());
+				budget--;
+			}
+			if (update.getValue().isEmpty()) updates.remove();
 		}
 	}
 
@@ -691,52 +868,127 @@ public final class ShareServer {
 	}
 
 
-	private void sendContainerSnapshot(ServerPlayer player, SharedProject project, UUID requestId) {
-		List<SharedContainerView> containers = project.containerSnapshot();
-		int packetSize = ShareProtocol.MAX_CONTAINER_CHANGES_PER_PACKET;
-		int chunks = Math.max(1, (containers.size() + packetSize - 1) / packetSize);
-		for (int chunk = 0; chunk < chunks; chunk++) {
-			int from = chunk * packetSize;
-			int to = Math.min(containers.size(), from + packetSize);
-			List<SharedContainerView> values = from < to ? containers.subList(from, to) : List.of();
-			SharedContainerSnapshot snapshot = new SharedContainerSnapshot(project.id(),
-					project.containerRevision(), chunk == 0, chunk == chunks - 1, values);
-			this.send(player, ClientboundSharePayload.of(ShareProtocol.ClientboundEvent.CONTAINER_SNAPSHOT,
-					requestId, ShareWire.encodeContainerSnapshot(snapshot)));
-		}
+	private void queueSnapshot(ServerPlayer player, SharedProject project, UUID requestId) {
+		UUID playerId = player.getUUID();
+		this.pendingSnapshots.put(playerId, new PendingSnapshot(project, requestId));
+		this.pendingDeltas.remove(playerId);
+		this.enqueueOutbound(playerId);
+		this.containerScanDirty = true;
 	}
 
 	private void sendContainerDelta(SharedProject project, List<SharedContainerView> upserts,
 			List<SharedContainerKey> removals) {
-		if (upserts.isEmpty() && removals.isEmpty()) {
-			return;
-		}
+		if (upserts.isEmpty() && removals.isEmpty()) return;
 		MinecraftServer server = this.server;
-		if (upserts.size() > ShareProtocol.MAX_CONTAINER_CHANGES_PER_PACKET
-				|| removals.size() > ShareProtocol.MAX_CONTAINER_CHANGES_PER_PACKET) {
-			throw new IllegalArgumentException("Container delta exceeds packet bound");
-		}
-		if (server == null) {
-			return;
-		}
-		SharedContainerDelta delta = new SharedContainerDelta(project.id(), project.containerRevision(), upserts, removals);
-		byte[] body = ShareWire.encodeContainerDelta(delta);
-		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-			Set<UUID> projects = this.subscriptions.get(player.getUUID());
-			if (projects == null || !projects.contains(project.id())) {
+		if (server == null) return;
+
+		for (Map.Entry<UUID, UUID> subscription : List.copyOf(this.subscriptions.entrySet())) {
+			if (!project.id().equals(subscription.getValue())) continue;
+			ServerPlayer player = server.getPlayerList().getPlayer(subscription.getKey());
+			if (player == null || (!this.isAdministrator(player)
+					&& !project.can(player.getUUID(), SharePermission.VIEW))) {
+				this.disconnect(subscription.getKey());
 				continue;
 			}
-			if (!this.isAdministrator(player) && !project.can(player.getUUID(), SharePermission.VIEW)) {
-				projects.remove(project.id());
+			if (this.pendingSnapshots.containsKey(player.getUUID())) {
+				this.queueSnapshot(player, project, UUID.randomUUID());
 				continue;
 			}
+			PendingDelta delta = this.pendingDeltas.computeIfAbsent(player.getUUID(),
+					ignored -> new PendingDelta(project.id()));
+			if (!delta.merge(project.containerRevision(), upserts, removals)) {
+				this.queueSnapshot(player, project, UUID.randomUUID());
+				continue;
+			}
+			this.enqueueOutbound(player.getUUID());
+		}
+	}
+
+	private void flushOutboundSync(MinecraftServer server) {
+		long deadline = System.nanoTime() + SYNC_WORK_BUDGET_NANOS;
+		int candidates = this.outboundPlayers.size();
+		int sent = 0;
+		for (int attempt = 0; attempt < candidates && sent < SYNC_PACKETS_PER_TICK; attempt++) {
+			if (sent > 0 && System.nanoTime() >= deadline) break;
+			UUID playerId = this.outboundPlayers.pollFirst();
+			if (playerId == null) break;
+			this.outboundQueued.remove(playerId);
+			ServerPlayer player = server.getPlayerList().getPlayer(playerId);
+			UUID projectId = this.subscriptions.get(playerId);
+			SharedProject project = projectId != null ? this.store.get(projectId) : null;
+			if (player == null || project == null || (!this.isAdministrator(player)
+					&& !project.can(playerId, SharePermission.VIEW))) {
+				this.disconnect(playerId);
+				continue;
+			}
+
+			PendingSnapshot snapshot = this.pendingSnapshots.get(playerId);
+			if (snapshot != null) {
+				if (!project.id().equals(snapshot.projectId)
+						|| project.containerRevision() != snapshot.revision) {
+					this.pendingSnapshots.put(playerId, new PendingSnapshot(project, snapshot.requestId));
+					this.enqueueOutbound(playerId);
+					this.containerScanDirty = true;
+					continue;
+				}
+				int from = snapshot.cursor;
+				int to = Math.min(snapshot.keys.size(), from + SNAPSHOT_CONTAINERS_PER_PACKET);
+				List<SharedContainerView> values = new ArrayList<>(Math.max(0, to - from));
+				for (int index = from; index < to; index++) {
+					SharedContainerView view = project.containerView(snapshot.keys.get(index));
+					if (view != null) values.add(view);
+				}
+				boolean complete = to >= snapshot.keys.size();
+				SharedContainerSnapshot packet = new SharedContainerSnapshot(project.id(), snapshot.revision,
+						from == 0, complete, values);
+				this.send(player, ClientboundSharePayload.of(ShareProtocol.ClientboundEvent.CONTAINER_SNAPSHOT,
+						snapshot.requestId, ShareWire.encodeContainerSnapshot(packet)));
+				snapshot.cursor = to;
+				sent++;
+				if (complete) {
+					this.pendingSnapshots.remove(playerId);
+					this.containerScanDirty = true;
+				} else {
+					this.enqueueOutbound(playerId);
+				}
+				continue;
+			}
+
+			PendingDelta delta = this.pendingDeltas.remove(playerId);
+			if (delta == null || !project.id().equals(delta.projectId)) continue;
+			SharedContainerDelta packet = new SharedContainerDelta(project.id(), delta.revision(),
+					delta.upserts(), delta.removals());
 			this.send(player, ClientboundSharePayload.of(ShareProtocol.ClientboundEvent.CONTAINERS_CHANGED,
-					UUID.randomUUID(), body));
+					UUID.randomUUID(), ShareWire.encodeContainerDelta(packet)));
+			sent++;
 		}
+	}
+
+	private void enqueueOutbound(UUID playerId) {
+		if (this.outboundQueued.add(playerId)) this.outboundPlayers.addLast(playerId);
+	}
+
+	private void cancelPlayerSync(UUID playerId) {
+		this.pendingSnapshots.remove(playerId);
+		this.pendingDeltas.remove(playerId);
+		this.outboundQueued.remove(playerId);
+	}
+
+	private void disconnect(UUID playerId) {
+		this.subscriptions.remove(playerId);
+		this.cancelPlayerSync(playerId);
+		this.pendingInbound.remove(playerId);
+		this.staleResyncTicks.remove(playerId);
+		this.actionWindows.remove(playerId);
+		this.containerScanDirty = true;
 	}
 
 	private static SharedContainerKey wireKey(SharedProject.ContainerKey key) {
 		return new SharedContainerKey(key.dimension(), key.x(), key.y(), key.z());
+	}
+
+	private static SharedContainerKey wireKey(SharedContainerView container) {
+		return new SharedContainerKey(container.dimension(), container.x(), container.y(), container.z());
 	}
 
 	@Nullable
@@ -755,7 +1007,13 @@ public final class ShareServer {
 		}
 		if (project.revision() != expected) {
 			this.sendError(player, requestId, "logisticmatica.share.error.stale");
-			this.sendProjects(player, UUID.randomUUID());
+			MinecraftServer server = this.server;
+			long tick = server != null ? server.getTickCount() : 0L;
+			long previous = this.staleResyncTicks.getOrDefault(player.getUUID(), Long.MIN_VALUE / 2L);
+			if (tick - previous >= 20L) {
+				this.staleResyncTicks.put(player.getUUID(), tick);
+				this.sendProject(player, project, UUID.randomUUID());
+			}
 			return false;
 		}
 		return true;
@@ -774,8 +1032,14 @@ public final class ShareServer {
 	}
 
 	private void send(ServerPlayer player, ClientboundSharePayload payload) {
-		if (ServerPlayNetworking.canSend(player, ClientboundSharePayload.TYPE)) {
-			ServerPlayNetworking.send(player, payload);
+		try {
+			if (ServerPlayNetworking.canSend(player, ClientboundSharePayload.TYPE)) {
+				ServerPlayNetworking.send(player, payload);
+			}
+		} catch (RuntimeException e) {
+			Logisticmatica.LOGGER.debug("[{}] Dropped sharing packet for disconnected player {}: {}",
+					Logisticmatica.MOD_NAME, player.getName().getString(), e.getMessage());
+			this.disconnect(player.getUUID());
 		}
 	}
 
