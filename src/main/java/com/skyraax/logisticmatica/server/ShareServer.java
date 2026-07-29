@@ -286,6 +286,7 @@ public final class ShareServer {
 				case LEAVE_PROJECT -> this.handleLeave(player, payload);
 				case TOGGLE_CONTAINER -> this.handleContainerToggle(player, payload);
 				case REFRESH_CONTAINER -> this.handleContainerRefresh(player, payload);
+				case REMOVE_CONTAINER -> this.handleContainerRemove(player, payload);
 				case LIST_PLAYERS -> this.sendPlayers(player, payload.requestId());
 				case SET_PUBLIC_ACCESS -> this.handlePublicAccess(player, payload);
 				case REQUEST_ACCESS -> this.handleAccessRequest(player, payload);
@@ -764,6 +765,36 @@ public final class ShareServer {
 				nowMarked ? "logisticmatica.message.mark.marked" : "logisticmatica.message.mark.unmarked");
 	}
 
+	/**
+	 * Deterministically removes an existing mark by its authoritative key. Unlike the look-at
+	 * toggle, this recovery action deliberately has no distance or loaded-chunk requirement.
+	 */
+	private void handleContainerRemove(ServerPlayer player, ServerboundSharePayload payload) throws IOException {
+		ShareWire.Reader reader = ShareWire.decode(payload.body());
+		UUID projectId = reader.readUuid();
+		String dimension = reader.readString();
+		SharedProject.ContainerKey key = new SharedProject.ContainerKey(dimension,
+				reader.readInt(), reader.readInt(), reader.readInt());
+		reader.requireFinished();
+
+		SharedProject project = this.requireProject(
+				player, projectId, SharePermission.MANAGE_CONTAINERS, payload.requestId());
+		if (project == null) return;
+		if (!project.dimension().equals(dimension)) {
+			this.sendError(player, payload.requestId(), "logisticmatica.share.error.invalid_request");
+			return;
+		}
+
+		if (!project.removeContainer(key)) {
+			this.sendNotice(player, payload.requestId(),
+					"logisticmatica.share.notice.container_already_removed");
+			return;
+		}
+		this.changed(project, player);
+		this.containerScanDirty = true;
+		this.sendContainerDelta(project, List.of(), List.of(wireKey(key)));
+		this.sendNotice(player, payload.requestId(), "logisticmatica.message.mark.unmarked");
+	}
 	private void handleContainerRefresh(ServerPlayer player, ServerboundSharePayload payload) throws IOException {
 		ShareWire.Reader reader = ShareWire.decode(payload.body());
 		UUID projectId = reader.readUuid();

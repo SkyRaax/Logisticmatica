@@ -2,7 +2,7 @@ package com.skyraax.logisticmatica.share;
 
 /** Wire-level constants and stable message identifiers for the sharing protocol. */
 public final class ShareProtocol {
-	public static final int VERSION = 6;
+	public static final int VERSION = 7;
 	public static final int MAX_SCHEMATIC_BYTES = 32 * 1024 * 1024;
 	public static final int MAX_ENVELOPE_BYTES = MAX_SCHEMATIC_BYTES + 4 * 1024 * 1024;
 	public static final int MAX_PROJECTS_PER_PLAYER = 256;
@@ -54,7 +54,8 @@ public final class ShareProtocol {
 		RESPOND_ACCESS,
 		SUBSCRIBE_PROJECT,
 		UNSUBSCRIBE_PROJECT,
-		SET_PROJECT_STATUS;
+		SET_PROJECT_STATUS,
+		REMOVE_CONTAINER;
 
 		public static ServerboundAction byId(int id) {
 			ServerboundAction[] values = values();

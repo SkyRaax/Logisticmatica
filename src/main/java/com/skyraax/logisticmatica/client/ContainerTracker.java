@@ -2,6 +2,7 @@ package com.skyraax.logisticmatica.client;
 
 import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -211,27 +212,54 @@ public class ContainerTracker {
 
 	/** Removes the previous server snapshot before applying a fresh one. */
 	public void clearServerBindings() {
-		for (UUID projectId : Set.copyOf(this.serverBindings.keySet())) {
+		Set<UUID> projectIds = new HashSet<>(this.serverBindings.keySet());
+		projectIds.addAll(this.displacedLocalBindings.keySet());
+		for (UUID projectId : projectIds) {
 			this.clearServerBindings(projectId);
 		}
 	}
 
 	public void clearServerBindings(UUID projectId) {
+		this.clearServerBindings(projectId, true);
+	}
+
+	/** Clears a live snapshot while retaining displaced local collisions until the replacement completes. */
+	public void beginServerSnapshot(UUID projectId) {
+		this.clearServerBindings(projectId, false);
+	}
+
+	/** Restores only displaced local positions that are absent from the completed authoritative snapshot. */
+	public void finishServerSnapshot(UUID projectId) {
+		Map<BlockPos, DisplacedLocalBinding> displaced = this.displacedLocalBindings.get(projectId);
+		if (displaced == null) return;
+		for (BlockPos pos : Set.copyOf(displaced.keySet())) {
+			if (!projectId.equals(this.serverProjectByPos.get(pos))) this.restoreDisplaced(projectId, pos);
+		}
+	}
+
+	private void clearServerBindings(UUID projectId, boolean restoreLocal) {
 		Set<BlockPos> positions = this.serverBindings.remove(projectId);
-		if (positions == null) return;
 		String projectKey = projectKey(projectId);
-		for (BlockPos pos : positions) {
-			if (!projectId.equals(this.serverProjectByPos.remove(pos))) continue;
-			this.keyByPos.remove(pos, projectKey);
-			LinkedHashSet<BlockPos> marked = this.markedBySchematic.get(projectKey);
-			if (marked != null) {
-				marked.remove(pos);
-				if (marked.isEmpty()) this.markedBySchematic.remove(projectKey);
+		if (positions != null) {
+			for (BlockPos pos : positions) {
+				if (!projectId.equals(this.serverProjectByPos.remove(pos))) continue;
+				this.keyByPos.remove(pos, projectKey);
+				LinkedHashSet<BlockPos> marked = this.markedBySchematic.get(projectKey);
+				if (marked != null) {
+					marked.remove(pos);
+					if (marked.isEmpty()) this.markedBySchematic.remove(projectKey);
+				}
+				this.contents.remove(pos);
+				this.syncStatuses.remove(pos);
+				this.lastUpdatedEpochMillis.remove(pos);
+				if (restoreLocal) this.restoreDisplaced(projectId, pos);
 			}
-			this.contents.remove(pos);
-			this.syncStatuses.remove(pos);
-			this.lastUpdatedEpochMillis.remove(pos);
-			this.restoreDisplaced(projectId, pos);
+		}
+		if (restoreLocal) {
+			Map<BlockPos, DisplacedLocalBinding> remaining = this.displacedLocalBindings.get(projectId);
+			if (remaining != null) {
+				for (BlockPos pos : Set.copyOf(remaining.keySet())) this.restoreDisplaced(projectId, pos);
+			}
 		}
 	}
 
@@ -292,18 +320,22 @@ public class ContainerTracker {
 			existingProject = this.serverProjectByPos.get(immutable);
 		}
 		if (existing != null && existingProject == null) {
-			if (!this.isVisualsVisible(existing, immutable)) {
-				this.hiddenVisuals.add(new VisualKey(key, immutable));
-			}
+			boolean visualsVisible = this.isVisualsVisible(existing, immutable);
 			LinkedHashSet<BlockPos> local = this.markedBySchematic.get(existing);
-			Object2IntOpenHashMap<ItemType> current = this.contents.get(immutable);
-			Object2IntOpenHashMap<ItemType> saved = null;
-			if (current != null) {
-				saved = new Object2IntOpenHashMap<>();
-				saved.putAll(current);
+			if (promoteLocal) {
+				this.removeDisplaced(projectId, immutable);
+				this.moveVisualPreference(existing, key, immutable);
+			} else {
+				if (!visualsVisible) this.hiddenVisuals.add(new VisualKey(key, immutable));
+				Object2IntOpenHashMap<ItemType> current = this.contents.get(immutable);
+				Object2IntOpenHashMap<ItemType> saved = null;
+				if (current != null) {
+					saved = new Object2IntOpenHashMap<>();
+					saved.putAll(current);
+				}
+				this.displacedLocalBindings.computeIfAbsent(projectId, ignored -> new HashMap<>())
+						.putIfAbsent(immutable, new DisplacedLocalBinding(existing, saved));
 			}
-			this.displacedLocalBindings.computeIfAbsent(projectId, ignored -> new HashMap<>())
-					.putIfAbsent(immutable, new DisplacedLocalBinding(existing, saved));
 			if (local != null) {
 				local.remove(immutable);
 				if (local.isEmpty()) this.markedBySchematic.remove(existing);
@@ -374,6 +406,48 @@ public class ContainerTracker {
 		this.restoreDisplaced(projectId, immutable);
 	}
 
+	/** Permanently drops a displaced local collision so an explicit removal cannot resurrect it. */
+	public void discardDisplaced(UUID projectId, BlockPos pos) {
+		this.removeDisplaced(projectId, pos.immutable());
+	}
+
+	private void removeDisplaced(UUID projectId, BlockPos pos) {
+		Map<BlockPos, DisplacedLocalBinding> byPosition = this.displacedLocalBindings.get(projectId);
+		if (byPosition == null) return;
+		byPosition.remove(pos);
+		if (byPosition.isEmpty()) this.displacedLocalBindings.remove(projectId);
+	}
+
+	/** Removes every client-side trace of one position, including corrupt/orphaned ownership data. */
+	public boolean forceRemove(BlockPos pos) {
+		BlockPos immutable = pos.immutable();
+		String existing = this.keyByPos.remove(immutable);
+		boolean changed = existing != null;
+		for (String key : Set.copyOf(this.markedBySchematic.keySet())) {
+			LinkedHashSet<BlockPos> marked = this.markedBySchematic.get(key);
+			if (marked != null && marked.remove(immutable)) changed = true;
+			if (marked != null && marked.isEmpty()) this.markedBySchematic.remove(key);
+		}
+		UUID projectId = this.serverProjectByPos.remove(immutable);
+		if (projectId != null) {
+			changed = true;
+			Set<BlockPos> projectPositions = this.serverBindings.get(projectId);
+			if (projectPositions != null) {
+				projectPositions.remove(immutable);
+				if (projectPositions.isEmpty()) this.serverBindings.remove(projectId);
+			}
+		}
+		for (UUID displacedProject : Set.copyOf(this.displacedLocalBindings.keySet())) {
+			Map<BlockPos, DisplacedLocalBinding> displaced = this.displacedLocalBindings.get(displacedProject);
+			if (displaced != null && displaced.remove(immutable) != null) changed = true;
+			if (displaced != null && displaced.isEmpty()) this.displacedLocalBindings.remove(displacedProject);
+		}
+		this.contents.remove(immutable);
+		this.syncStatuses.remove(immutable);
+		this.lastUpdatedEpochMillis.remove(immutable);
+		this.hiddenVisuals.removeIf(visual -> visual.pos().equals(immutable));
+		return changed;
+	}
 	private void restoreDisplaced(UUID projectId, BlockPos pos) {
 		Map<BlockPos, DisplacedLocalBinding> byPosition = this.displacedLocalBindings.get(projectId);
 		if (byPosition == null) return;
@@ -398,7 +472,8 @@ public class ContainerTracker {
 		return "project:" + projectId;
 	}
 
-	private boolean isServerBinding(BlockPos pos) {
+	/** Whether this position is a transient authoritative server projection. */
+	public boolean isServerBinding(BlockPos pos) {
 		return this.serverProjectByPos.containsKey(pos);
 	}
 

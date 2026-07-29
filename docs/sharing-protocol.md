@@ -1,4 +1,4 @@
-# Logisticmatica sharing protocol v6
+# Logisticmatica sharing protocol v7
 
 Logisticmatica uses a server-authoritative Fabric play protocol. The server owns project membership,
 permissions, placement transforms, schematic versions, substitutions and tracked-container state.
@@ -42,7 +42,7 @@ Client to server actions:
 - `UPDATE_TRANSFORM`, `UPDATE_SUBSTITUTIONS`
 - `INVITE`, `RESPOND_INVITE`, `SET_PERMISSIONS`, `REMOVE_MEMBER`
 - `DELETE_PROJECT`, `LEAVE_PROJECT`
-- `TOGGLE_CONTAINER`, `REFRESH_CONTAINER`
+- `TOGGLE_CONTAINER`, `REFRESH_CONTAINER`, `REMOVE_CONTAINER`
 - `LIST_PLAYERS`, `SET_PUBLIC_ACCESS`, `REQUEST_ACCESS`, `RESPOND_ACCESS`
 - `SUBSCRIBE_PROJECT`, `UNSUBSCRIBE_PROJECT`, `SET_PROJECT_STATUS`
 
@@ -153,7 +153,9 @@ per server and dimension. Activating an unloaded project downloads and focuses i
 only clears Logisticmatica's material and container overlays and leaves other Litematica rendering
 untouched. Accepted container marks are promoted to project-owned bindings; rejected marks remain
 local and are reported as a partial migration. Persisted local snapshots remain the no-server
-fallback. An explicit Export Local Copy action writes an independent, server-named `.litematic` file;
+fallback. Promotion consumes the accepted local binding instead of retaining a hidden copy that could
+reappear after Unfocus; owners affected by the older behavior are repaired by matching their original
+or content-identical source file. An explicit Export Local Copy action writes an independent, server-named `.litematic` file;
 shared cache files and shared placements cannot be uploaded as new projects implicitly.
 For an owner, the destructive UI action is **End Sharing**, not deletion of local work. The client
 subscribes for one final authoritative container snapshot, the server removes the project and sends
@@ -187,7 +189,13 @@ without an inventory first becomes Missing with an empty material contribution; 
 finds it missing after a five-second grace period, the stale mark is removed and a removal delta is
 sent. Too-complex nested contents retain the last valid material snapshot. Switching or clearing focus
 unsubscribes and removes that project's projected bindings immediately; returning later starts with a
-current snapshot.
+current snapshot. The container detail screen also exposes a two-step Force Delete action.
+`REMOVE_CONTAINER` addresses the exact authoritative key, requires `MANAGE_CONTAINERS`, and has no
+distance or loaded-chunk requirement, so a broken or already-removed world block cannot trap a server
+mark. Local and orphaned client marks are removed directly. Independently, the client checks at most
+64 local marks every five seconds and removes one only after three consecutive checks in a loaded
+chunk confirm that it is no longer an inventory. Server projections and unloaded chunks are never
+deleted by this client repair loop.
 
 The material list, world highlights, floating content labels and look-at peek follow the explicit
 Logisticmatica focus. Shared container totals use the project UUID scope, so authoritative server

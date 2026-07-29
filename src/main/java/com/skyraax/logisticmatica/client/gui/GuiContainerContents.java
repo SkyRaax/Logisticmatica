@@ -1,6 +1,7 @@
 package com.skyraax.logisticmatica.client.gui;
 
 import java.util.List;
+import javax.annotation.Nullable;
 
 import net.minecraft.core.BlockPos;
 
@@ -16,6 +17,7 @@ import fi.dy.masa.malilib.util.StringUtils;
 
 import com.skyraax.logisticmatica.client.gui.ContainerData.ItemCount;
 import com.skyraax.logisticmatica.client.gui.ContainerData.Snapshot;
+import com.skyraax.logisticmatica.client.share.ClientShareManager;
 
 /**
  * Shows the contents of a single tracked container — the "look inside a marked chest from anywhere"
@@ -24,6 +26,8 @@ import com.skyraax.logisticmatica.client.gui.ContainerData.Snapshot;
  */
 public class GuiContainerContents extends GuiListBase<ItemCount, WidgetItemCountEntry, WidgetListContainerContents> {
 	private final BlockPos pos;
+	@Nullable private final String schematicKey;
+	private boolean deleteArmed;
 	private List<ItemCount> items;
 	private int totalItems;
 
@@ -32,6 +36,7 @@ public class GuiContainerContents extends GuiListBase<ItemCount, WidgetItemCount
 
 		this.pos = snapshot.pos();
 		this.items = snapshot.items();
+		this.schematicKey = snapshot.schematicKey();
 		this.totalItems = snapshot.totalItems();
 		this.useTitleHierarchy = false;
 		this.updateTitle();
@@ -82,6 +87,14 @@ public class GuiContainerContents extends GuiListBase<ItemCount, WidgetItemCount
 		ButtonGeneric refresh = new ButtonGeneric(x, y, -1, 20,
 				StringUtils.translate("logisticmatica.gui.button.material_list.refresh"));
 		this.addButton(refresh, new ButtonListener(ButtonListener.Type.REFRESH, this));
+		x += refresh.getWidth() + 6;
+		String deleteKey = this.deleteArmed
+				? "logisticmatica.gui.button.container.confirm_force_delete"
+				: "logisticmatica.gui.button.container.force_delete";
+		ButtonGeneric forceDelete = new ButtonGeneric(x, y, -1, 20, StringUtils.translate(deleteKey));
+		forceDelete.setHoverStrings("logisticmatica.gui.button.container.force_delete.description");
+		this.addButton(forceDelete, new ButtonListener(ButtonListener.Type.FORCE_DELETE, this));
+
 
 		String backLabel = StringUtils.translate("logisticmatica.gui.button.back");
 		int backWidth = this.getStringWidth(backLabel) + 20;
@@ -117,6 +130,7 @@ public class GuiContainerContents extends GuiListBase<ItemCount, WidgetItemCount
 	private record ButtonListener(Type type, GuiContainerContents gui) implements IButtonActionListener {
 		private enum Type {
 			REFRESH,
+			FORCE_DELETE,
 			BACK
 		}
 
@@ -124,6 +138,15 @@ public class GuiContainerContents extends GuiListBase<ItemCount, WidgetItemCount
 		public void actionPerformedWithButton(ButtonBase button, int mouseButton) {
 			switch (this.type) {
 				case REFRESH -> this.gui.refresh();
+				case FORCE_DELETE -> {
+					if (!this.gui.deleteArmed) {
+						this.gui.deleteArmed = true;
+						this.gui.initGui();
+					} else if (ClientShareManager.getInstance().forceRemoveContainer(
+							this.gui.schematicKey, this.gui.pos)) {
+						GuiBase.openGui(this.gui.getParent());
+					}
+				}
 				case BACK -> GuiBase.openGui(this.gui.getParent());
 			}
 		}

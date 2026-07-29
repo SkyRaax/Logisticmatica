@@ -24,7 +24,9 @@ placement sharing with live sync and granular permissions.
       stored inside marked containers to the same material counts as the local Litematica view;
       the overview shows authoritative sync health and last-update age, and destroyed or replaced
       containers briefly show as missing before their stale marks are removed after a confirmed
-      loaded-state grace period.
+      loaded-state grace period. The detail view has a confirmed Force Delete recovery action, while
+      repeatedly verified stale local marks are repaired automatically without inspecting unloaded
+      chunks.
 - [x] **Material substitution** — persistently swap a material in a placement (e.g. a door
       wood type) for one you actually have, editable straight from the material list.
 - [x] **Placement sharing & live sync** *(server component)* — choose any loaded placement,

@@ -62,6 +62,7 @@ public class LogisticmaticaInitHandler implements IInitializationHandler {
 		// their content snapshots fresh each tick so their items count towards the list.
 		WorldLoadHandler.getInstance().registerWorldLoadPostHandler(new ContainerTrackerWorldLoad());
 		TickHandler.getInstance().registerClientTickHandler(new ContainerContentTickHandler());
+		TickHandler.getInstance().registerClientTickHandler(new ContainerConsistencyTickHandler());
 
 		// Load persisted material substitutions once; they are re-applied to schematics on load/join.
 		SubstitutionManager.getInstance().load();

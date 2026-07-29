@@ -88,6 +88,7 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 	private final Map<UUID, SchematicPlacement> placements = new HashMap<>();
 	private final Map<UUID, Long> containerRevisions = new HashMap<>();
 	private final Map<UUID, PendingContainerPromotion> pendingContainerPromotions = new HashMap<>();
+	private final Map<UUID, Map<String, Boolean>> legacyOwnerSourceChecks = new HashMap<>();
 	private final Set<UUID> subscriptions = new HashSet<>();
 	private final Map<UUID, PendingCreate> pendingCreates = new HashMap<>();
 	private final Set<UUID> snapshotPromotions = new HashSet<>();
@@ -227,6 +228,7 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 		this.replacements.clear();
 		this.containerRevisions.clear();
 		this.pendingContainerPromotions.clear();
+		this.legacyOwnerSourceChecks.clear();
 		this.subscriptions.clear();
 		ContainerTracker.getInstance().clearServerBindings();
 		this.focusAfterDownload.clear();
@@ -319,21 +321,28 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 		}
 		ContainerTracker tracker = ContainerTracker.getInstance();
 		if (snapshot.reset()) {
-			tracker.clearServerBindings(snapshot.projectId());
+			tracker.beginServerSnapshot(snapshot.projectId());
 			this.snapshotPromotions.remove(snapshot.projectId());
+			this.legacyOwnerSourceChecks.put(snapshot.projectId(), new HashMap<>());
 		}
 		boolean promoted = false;
 		PendingContainerPromotion migration = this.pendingContainerPromotions.get(project.id());
+		Map<String, Boolean> legacyOwnerSources = this.legacyOwnerSourceChecks.computeIfAbsent(
+				project.id(), ignored -> new HashMap<>());
 		for (SharedContainerView container : snapshot.containers()) {
 			if (!project.dimension().equals(container.dimension())) continue;
 			BlockPos pos = new BlockPos(container.x(), container.y(), container.z());
-			boolean promoteLocal = migration != null && migration.accept(pos);
+			boolean pendingPromotion = migration != null && migration.accept(pos);
+			boolean promoteLocal = pendingPromotion || this.isLegacyOwnerSource(
+					project, tracker.schematicKeyOf(pos), legacyOwnerSources);
 			promoted |= tracker.setServerBinding(project.id(), pos, container.items(),
 					container.status(), container.lastUpdatedEpochMillis(), promoteLocal);
 		}
 		if (promoted) this.snapshotPromotions.add(project.id());
 		if (!snapshot.complete()) return;
+		tracker.finishServerSnapshot(project.id());
 		this.containerRevisions.put(project.id(), snapshot.revision());
+		this.legacyOwnerSourceChecks.remove(project.id());
 		this.snapshotPromotions.remove(project.id());
 		tracker.save();
 		this.refreshAvailableMaterialCounts();
@@ -1037,6 +1046,74 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 		return true;
 	}
 
+	/**
+	 * Removes one tracked mark even when its world block no longer exists. Shared marks are removed
+	 * authoritatively and without the normal look-at/range requirement; orphaned local state is
+	 * repaired immediately.
+	 */
+	public boolean forceRemoveContainer(@Nullable String schematicKey, BlockPos pos) {
+		if (schematicKey == null) return false;
+		ContainerTracker tracker = ContainerTracker.getInstance();
+		UUID projectId = SchematicKey.projectId(schematicKey);
+		SharedProjectView project = projectId != null ? this.projects.get(projectId) : null;
+		if (projectId == null || project == null) {
+			boolean removed = tracker.forceRemove(pos);
+			if (removed) {
+				tracker.save();
+				this.refreshAvailableMaterialCounts();
+				InfoUtils.showGuiOrInGameMessage(MessageType.SUCCESS,
+						"logisticmatica.message.container.force_deleted_local");
+			}
+			return removed;
+		}
+		if (!project.can(SharePermission.MANAGE_CONTAINERS)) {
+			InfoUtils.showGuiOrInGameMessage(MessageType.ERROR, "logisticmatica.share.error.permissions");
+			return false;
+		}
+		if (!this.requireServer()) return false;
+
+		tracker.discardDisplaced(projectId, pos);
+		tracker.forceRemove(pos);
+		tracker.save();
+		this.refreshAvailableMaterialCounts();
+		byte[] body = ShareWire.encode(w -> {
+			w.writeUuid(projectId);
+			w.writeString(project.dimension());
+			w.writeInt(pos.getX());
+			w.writeInt(pos.getY());
+			w.writeInt(pos.getZ());
+		});
+		this.send(ServerboundSharePayload.of(ShareProtocol.ServerboundAction.REMOVE_CONTAINER, body));
+		InfoUtils.showGuiOrInGameMessage(MessageType.INFO,
+				"logisticmatica.message.container.force_delete_requested");
+		return true;
+	}
+
+	/**
+	 * Repairs clients affected by the old promotion bug: an owner's original local marks may still
+	 * be persisted after sharing. Exact remembered sources, or same-content schematic files, are
+	 * safely consumed into the authoritative project instead of being restored on Unfocus.
+	 */
+	private boolean isLegacyOwnerSource(SharedProjectView project, @Nullable String schematicKey,
+			Map<String, Boolean> cache) {
+		Minecraft mc = Minecraft.getInstance();
+		if (schematicKey == null || schematicKey.startsWith("name:")
+				|| SchematicKey.projectId(schematicKey) != null || mc.player == null
+				|| !project.ownerId().equals(mc.player.getUUID())) return false;
+		Path remembered = this.readOwnerSource(project.id());
+		if (remembered != null && SchematicKey.of(remembered).equals(schematicKey)) return true;
+		return cache.computeIfAbsent(schematicKey, key -> {
+			try {
+				Path file = Path.of(key);
+				return Files.isRegularFile(file)
+						&& project.schematicHash().equals(sha256(Files.readAllBytes(file)));
+			} catch (IOException | RuntimeException e) {
+				Logisticmatica.LOGGER.debug("[{}] Could not inspect a legacy local container source.",
+						Logisticmatica.MOD_NAME);
+				return false;
+			}
+		});
+	}
 	public void onLocalSubstitutionsChanged(LitematicaSchematic schematic) {
 		if (this.applyingRemote) return;
 		SharedProjectView project = this.projectFor(schematic);
