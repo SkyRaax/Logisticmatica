@@ -22,7 +22,9 @@ placement sharing with live sync and granular permissions.
       and a perspective-correct content preview in the world. A Find action flashes any selected
       container's outline for 15 seconds. Shared projects expand filled shulker boxes and bundles
       stored inside marked containers to the same material counts as the local Litematica view;
-      destroyed or replaced containers are removed automatically once their chunk is loaded.
+      the overview shows authoritative sync health and last-update age, and destroyed or replaced
+      containers briefly show as missing before their stale marks are removed after a confirmed
+      loaded-state grace period.
 - [x] **Material substitution** — persistently swap a material in a placement (e.g. a door
       wood type) for one you actually have, editable straight from the material list.
 - [x] **Placement sharing & live sync** *(server component)* — choose any loaded placement,
@@ -70,9 +72,12 @@ placement sharing with live sync and granular permissions.
    containers are loaded from an authoritative chunked server snapshot and then kept current through
    live deltas. Project details expose local notification controls for placement, schematic,
    substitution, project-status, container and access changes. Live container-content notifications
-   are hidden by default; when enabled they list exact added and removed items. **Unfocus Project** hides Logisticmatica's list,
-   highlights, labels and peek without deleting the project or hiding unrelated Litematica
-   placements.
+   are hidden by default; when enabled they list exact added and removed items. **Unfocus Project**
+   hides Logisticmatica's list, highlights, labels and peek without deleting the project or hiding
+   unrelated Litematica placements.
+   Server inventory changes use a bounded, deduplicated dirty queue plus a rotating fallback scan;
+   unfocused projects generate no background container work or packets. Administrators can inspect queue, scan,
+   subscriber, packet and persistence health with `/logisticmatica diagnostics`.
 8. **End Sharing** first refreshes the owner's authoritative container snapshot, removes the server
    project for every participant, and detaches the owner's existing placement back to a local
    schematic. Its placement state and container marks remain locally usable.

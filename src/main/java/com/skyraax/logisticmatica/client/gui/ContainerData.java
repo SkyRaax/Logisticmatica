@@ -16,12 +16,13 @@ import net.minecraft.world.phys.Vec3;
 import fi.dy.masa.malilib.util.data.ItemType;
 
 import com.skyraax.logisticmatica.client.ContainerTracker;
+import com.skyraax.logisticmatica.share.ContainerSyncStatus;
 
 /**
  * Turns the raw content cache in {@link ContainerTracker} into display-ready snapshots for the
- * container-overview screens: one {@link Snapshot} per marked container whose contents are known,
- * each carrying its items sorted by count. This is the read model the "view a chest from anywhere"
- * and "where is item X" screens are built on.
+ * container-overview screens: one {@link Snapshot} per marked container, including pending and
+ * unavailable server marks, each carrying its items sorted by count. This is the read model the
+ * "view a chest from anywhere" and "where is item X" screens are built on.
  */
 public final class ContainerData {
 	private ContainerData() {
@@ -32,10 +33,11 @@ public final class ContainerData {
 	}
 
 	/** A marked container's contents: its position, the schematic it belongs to, its items and the total. */
-	public record Snapshot(BlockPos pos, @Nullable String schematicKey, List<ItemCount> items, int totalItems) {
+	public record Snapshot(BlockPos pos, @Nullable String schematicKey, List<ItemCount> items, int totalItems,
+			ContainerSyncStatus syncStatus, long lastUpdatedEpochMillis) {
 	}
 
-	/** All marked containers whose contents we know, nearest to the player first. */
+	/** All marked containers, nearest to the player first. */
 	public static List<Snapshot> collectMarked() {
 		ContainerTracker tracker = ContainerTracker.getInstance();
 		Minecraft mc = Minecraft.getInstance();
@@ -47,23 +49,26 @@ public final class ContainerData {
 			Object2IntOpenHashMap<ItemType> contents = tracker.getContents(pos);
 
 			if (contents == null) contents = new Object2IntOpenHashMap<>();
-			out.add(toSnapshot(pos, tracker.schematicKeyOf(pos), contents));
+			out.add(toSnapshot(pos, tracker.schematicKeyOf(pos), contents,
+					tracker.getSyncStatus(pos), tracker.getLastUpdatedEpochMillis(pos)));
 		}
 
 		out.sort(Comparator.comparingDouble(snapshot -> distanceSq(snapshot.pos(), eye)));
 		return out;
 	}
 
-	/** The snapshot of a single container, or null if we have never looked inside it. */
+	/** The snapshot of a single container, or null if no contents snapshot exists. */
 	@Nullable
 	public static Snapshot snapshotOf(BlockPos pos) {
 		ContainerTracker tracker = ContainerTracker.getInstance();
 		Object2IntOpenHashMap<ItemType> contents = tracker.getContents(pos);
-		return contents == null ? null : toSnapshot(pos, tracker.schematicKeyOf(pos), contents);
+		return contents == null ? null : toSnapshot(pos, tracker.schematicKeyOf(pos), contents,
+				tracker.getSyncStatus(pos), tracker.getLastUpdatedEpochMillis(pos));
 	}
 
 	private static Snapshot toSnapshot(BlockPos pos, @Nullable String schematicKey,
-			Object2IntOpenHashMap<ItemType> contents) {
+			Object2IntOpenHashMap<ItemType> contents, ContainerSyncStatus syncStatus,
+			long lastUpdatedEpochMillis) {
 		List<ItemCount> items = new ArrayList<>(contents.size());
 		int total = 0;
 
@@ -73,7 +78,8 @@ public final class ContainerData {
 		}
 
 		items.sort(Comparator.comparingInt(ItemCount::count).reversed());
-		return new Snapshot(pos.immutable(), schematicKey, items, total);
+		return new Snapshot(pos.immutable(), schematicKey, items, total,
+				syncStatus, lastUpdatedEpochMillis);
 	}
 
 	private static double distanceSq(BlockPos pos, Vec3 eye) {

@@ -9,6 +9,7 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 
+import com.skyraax.logisticmatica.share.ContainerSyncStatus;
 import com.skyraax.logisticmatica.share.ShareAccess;
 import com.skyraax.logisticmatica.share.ProjectStatus;
 import com.skyraax.logisticmatica.share.SharePermission;
@@ -143,6 +144,26 @@ class SharedProjectTest {
 		assertEquals(SharePermission.EDITOR, restored.members().get(requester).permissions());
 	}
 
+	@Test
+	void availabilityStateKeepsLastContentsAndPersistsTransitionTime() {
+		SharedProject project = project(UUID.randomUUID());
+		SharedProject.ContainerKey key = new SharedProject.ContainerKey("minecraft:overworld", 4, 70, 9);
+		project.putContainer(key, Map.of("minecraft:stone", 64), ContainerSyncStatus.SYNCED, 1_000L);
+		long placementRevision = project.revision();
+
+		assertTrue(project.refreshContainer(key, Map.of("minecraft:stone", 64),
+				ContainerSyncStatus.UNLOADED, 2_000L));
+		assertFalse(project.refreshContainer(key, Map.of("minecraft:stone", 64),
+				ContainerSyncStatus.UNLOADED, 3_000L));
+		assertEquals(placementRevision, project.revision());
+		assertEquals(ContainerSyncStatus.UNLOADED, project.containers().get(key).status());
+		assertEquals(2_000L, project.containers().get(key).lastUpdatedEpochMillis());
+		assertEquals(Map.of("minecraft:stone", 64), project.containers().get(key).items());
+
+		SharedProject restored = SharedProject.fromJson(project.toJson());
+		assertTrue(restored != null);
+		assertEquals(project.containers().get(key), restored.containers().get(key));
+	}
 	private static SharedProject project(UUID owner) {
 		return new SharedProject(UUID.randomUUID(), owner, "Owner", "Project", "minecraft:overworld",
 				0, 64, 0, 0, 0, "a".repeat(64), 100);

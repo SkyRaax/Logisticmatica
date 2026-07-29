@@ -328,7 +328,8 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 			if (!project.dimension().equals(container.dimension())) continue;
 			BlockPos pos = new BlockPos(container.x(), container.y(), container.z());
 			boolean promoteLocal = migration != null && migration.accept(pos);
-			promoted |= tracker.setServerBinding(project.id(), pos, container.items(), promoteLocal);
+			promoted |= tracker.setServerBinding(project.id(), pos, container.items(),
+					container.status(), container.lastUpdatedEpochMillis(), promoteLocal);
 		}
 		if (promoted) this.snapshotPromotions.add(project.id());
 		if (!snapshot.complete()) return;
@@ -376,7 +377,8 @@ public final class ClientShareManager implements ISchematicPlacementEventListene
 				BlockPos pos = new BlockPos(container.x(), container.y(), container.z());
 				Map<String, Integer> previous = tracker.getContentsById(pos);
 				if (ItemChangeFormatter.accumulate(itemChanges, previous, container.items())) refreshed++;
-				tracker.setServerBinding(project.id(), pos, container.items());
+				tracker.setServerBinding(project.id(), pos, container.items(),
+						container.status(), container.lastUpdatedEpochMillis());
 			}
 		}
 		this.containerRevisions.put(project.id(), delta.revision());

@@ -182,6 +182,8 @@ public final class ShareWire {
 				this.writeInt(container.x());
 				this.writeInt(container.y());
 				this.writeInt(container.z());
+				this.writeInt(container.status().ordinal());
+				this.writeLong(container.lastUpdatedEpochMillis());
 				this.writeCount(container.items().size(), ShareProtocol.MAX_ITEM_TYPES_PER_CONTAINER);
 				for (Map.Entry<String, Integer> item : container.items().entrySet()) {
 					this.writeString(item.getKey());
@@ -302,12 +304,15 @@ public final class ShareWire {
 				int x = this.readInt();
 				int y = this.readInt();
 				int z = this.readInt();
+				ContainerSyncStatus status = ContainerSyncStatus.byId(this.readInt());
+				long lastUpdatedEpochMillis = this.readLong();
 				int itemCount = this.readCount(ShareProtocol.MAX_ITEM_TYPES_PER_CONTAINER);
 				Map<String, Integer> items = new LinkedHashMap<>();
 				for (int j = 0; j < itemCount; j++) {
 					items.put(this.readString(), this.readInt());
 				}
-				containers.add(new SharedContainerView(dimension, x, y, z, items));
+				containers.add(new SharedContainerView(dimension, x, y, z, items,
+						status, lastUpdatedEpochMillis));
 			}
 			return containers;
 		}

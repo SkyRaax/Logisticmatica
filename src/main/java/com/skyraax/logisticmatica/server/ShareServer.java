@@ -17,8 +17,13 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import javax.annotation.Nullable;
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
+
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.commands.Commands;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -27,6 +32,7 @@ import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.Rotation;
 
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
@@ -35,6 +41,7 @@ import me.lucko.fabric.api.permissions.v0.Permissions;
 
 import com.skyraax.logisticmatica.Logisticmatica;
 import com.skyraax.logisticmatica.share.ClientboundSharePayload;
+import com.skyraax.logisticmatica.share.ContainerSyncStatus;
 import com.skyraax.logisticmatica.share.ServerboundSharePayload;
 import com.skyraax.logisticmatica.share.ProjectStatus;
 import com.skyraax.logisticmatica.share.ShareAccess;
@@ -53,6 +60,9 @@ public final class ShareServer {
 	private static final ShareServer INSTANCE = new ShareServer();
 	private static final String ADMIN_PERMISSION = Logisticmatica.MOD_ID + ".admin";
 	private static final int CONTAINER_SCANS_PER_PASS = 4;
+	private static final int DIRTY_CONTAINER_SCANS_PER_TICK = 8;
+	private static final int DIRTY_CONTAINER_QUEUE_CAPACITY = 4_096;
+	private static final long MISSING_CONTAINER_GRACE_MILLIS = 5_000L;
 	private static final int CONTAINER_SCAN_INTERVAL_TICKS = 4;
 	private static final long CONTAINER_SCAN_BUDGET_NANOS = 750_000L;
 	private static final int SNAPSHOT_CONTAINERS_PER_PACKET = 16;
@@ -65,11 +75,19 @@ public final class ShareServer {
 
 	private final ShareStore store = new ShareStore();
 	private record ContainerScanTarget(SharedProject project, SharedProject.ContainerKey key) {}
+	private static final class ContainerScanBatch {
+		private final Map<SharedProject, List<SharedProject.ContainerKey>> changed = new LinkedHashMap<>();
+		private final Map<SharedProject, List<SharedProject.ContainerKey>> removed = new LinkedHashMap<>();
+		private int dirtyScans;
+		private int fallbackScans;
+	}
+
 	private static final class PendingSnapshot {
 		private final UUID projectId;
 		private final UUID requestId;
 		private final long revision;
 		private final List<SharedProject.ContainerKey> keys;
+		private final long queuedAtNanos = System.nanoTime();
 		private int cursor;
 
 		private PendingSnapshot(SharedProject project, UUID requestId) {
@@ -126,6 +144,11 @@ public final class ShareServer {
 	private List<ContainerScanTarget> containerScanOrder = List.of();
 	private boolean containerScanDirty = true;
 	private int containerScanCursor;
+	private final Map<ServerLevel, Long2ObjectOpenHashMap<ContainerScanTarget>> activeContainerTargets =
+			new HashMap<>();
+	private final BoundedDirtyQueue<ContainerScanTarget> dirtyContainers =
+			new BoundedDirtyQueue<>(DIRTY_CONTAINER_QUEUE_CAPACITY);
+	private final ShareDiagnostics diagnostics = new ShareDiagnostics();
 	private long nextContainerScanTick;
 	private final Map<UUID, UUID> subscriptions = new HashMap<>();
 	private final Map<UUID, PendingSnapshot> pendingSnapshots = new HashMap<>();
@@ -141,7 +164,37 @@ public final class ShareServer {
 	private ShareServer() {
 	}
 
+	/**
+	 * Enqueues only marked containers from projects that currently have an authorized subscriber.
+	 * Adjacent positions cover either half of a double chest without performing a world scan here.
+	 */
+	public static void markContainerDirty(ServerLevel level, BlockPos pos) {
+		MinecraftServer server = INSTANCE.server;
+		if (server == null || server != level.getServer() || !server.isSameThread()) return;
+		if (INSTANCE.activeContainerTargets.isEmpty()) return;
+		Long2ObjectOpenHashMap<ContainerScanTarget> targets = INSTANCE.activeContainerTargets.get(level);
+		if (targets == null) return;
+		int x = pos.getX();
+		int y = pos.getY();
+		int z = pos.getZ();
+		INSTANCE.enqueueDirty(targets.get(BlockPos.asLong(x, y, z)));
+		INSTANCE.enqueueDirty(targets.get(BlockPos.asLong(x + 1, y, z)));
+		INSTANCE.enqueueDirty(targets.get(BlockPos.asLong(x - 1, y, z)));
+		INSTANCE.enqueueDirty(targets.get(BlockPos.asLong(x, y, z + 1)));
+		INSTANCE.enqueueDirty(targets.get(BlockPos.asLong(x, y, z - 1)));
+	}
+
+	private void enqueueDirty(@Nullable ContainerScanTarget target) {
+		if (target != null) this.dirtyContainers.offer(target);
+	}
+
 	public static void register() {
+		CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
+				dispatcher.register(Commands.literal("logisticmatica")
+						.then(Commands.literal("diagnostics")
+								.requires(source -> Permissions.check(
+										source, ADMIN_PERMISSION, PermissionLevel.ADMINS))
+								.executes(command -> INSTANCE.sendDiagnostics(command.getSource())))));
 		ServerPlayNetworking.registerGlobalReceiver(ServerboundSharePayload.TYPE, (payload, context) -> {
 			UUID playerId = context.player().getUUID();
 			AtomicInteger pending = INSTANCE.pendingInbound.computeIfAbsent(playerId,
@@ -172,6 +225,9 @@ public final class ShareServer {
 		this.store.start(server);
 		this.containerScanCursor = 0;
 		this.nextContainerScanTick = 0L;
+		this.activeContainerTargets.clear();
+		this.dirtyContainers.reset();
+		this.diagnostics.reset();
 		this.subscriptions.clear();
 		this.pendingSnapshots.clear();
 		this.pendingDeltas.clear();
@@ -188,6 +244,8 @@ public final class ShareServer {
 		this.store.stop();
 		this.server = null;
 		this.containerScanOrder = List.of();
+		this.activeContainerTargets.clear();
+		this.dirtyContainers.clear();
 		this.containerScanDirty = true;
 		this.subscriptions.clear();
 		this.pendingSnapshots.clear();
@@ -332,7 +390,8 @@ public final class ShareServer {
 			if (snapshot == null || snapshot.size() > ShareProtocol.MAX_ITEM_TYPES_PER_CONTAINER) {
 				continue;
 			}
-			project.putContainer(key, snapshot);
+			project.putContainer(key, snapshot, loaded ? ContainerSyncStatus.SYNCED : ContainerSyncStatus.PENDING,
+					loaded ? System.currentTimeMillis() : 0L);
 		}
 	}
 
@@ -716,23 +775,15 @@ public final class ShareServer {
 		if (project == null || !project.containers().containsKey(key)) {
 			return;
 		}
-		ServerLevel level = ServerContainerAccess.level(player.level().getServer(), dimension);
-		if (level == null) return;
-		ServerContainerAccess.ReadResult result = ServerContainerAccess.read(level,
-				new BlockPos(key.x(), key.y(), key.z()));
-		if (result.shouldRemoveMark() && project.removeContainer(key)) {
-			this.store.save();
-			this.pendingProjectRecipients.computeIfAbsent(project.id(), ignored -> new LinkedHashSet<>())
-					.add(player.getUUID());
-			this.containerScanDirty = true;
-			this.sendContainerDelta(project, List.of(), List.of(wireKey(key)));
-		} else if (result.status() == ServerContainerAccess.ReadStatus.AVAILABLE
-				&& result.items().size() <= ShareProtocol.MAX_ITEM_TYPES_PER_CONTAINER
-				&& project.refreshContainer(key, result.items())) {
-			project.commitContainerRefresh();
-			this.store.save();
-			this.sendContainerDelta(project, List.of(project.containerView(key)), List.of());
-		}
+		long started = System.nanoTime();
+		ContainerScanBatch batch = new ContainerScanBatch();
+		this.scanContainer(player.level().getServer(), new ContainerScanTarget(project, key), batch);
+		this.finishContainerScans(batch);
+		int changed = batch.changed.values().stream().mapToInt(List::size).sum();
+		int removed = batch.removed.values().stream().mapToInt(List::size).sum();
+		this.diagnostics.recordScanWork(1, 0, changed, removed, System.nanoTime() - started);
+		this.pendingProjectRecipients.computeIfAbsent(project.id(), ignored -> new LinkedHashSet<>())
+				.add(player.getUUID());
 	}
 
 	private void onServerTick(MinecraftServer server) {
@@ -740,58 +791,121 @@ public final class ShareServer {
 		this.store.tick(tick);
 		this.flushProjectUpdates(server);
 		this.flushOutboundSync(server);
-		if (tick < this.nextContainerScanTick) {
-			return;
-		}
-		this.nextContainerScanTick = tick + CONTAINER_SCAN_INTERVAL_TICKS;
 		if (this.containerScanDirty) this.rebuildContainerScanOrder(server);
-		int total = this.containerScanOrder.size();
-		if (total == 0) {
-			this.containerScanCursor = 0;
-			return;
+
+		long started = System.nanoTime();
+		long deadline = started + CONTAINER_SCAN_BUDGET_NANOS;
+		ContainerScanBatch batch = new ContainerScanBatch();
+
+		for (int index = 0; index < DIRTY_CONTAINER_SCANS_PER_TICK; index++) {
+			if (index > 0 && System.nanoTime() >= deadline) break;
+			ContainerScanTarget target = this.dirtyContainers.poll();
+			if (target == null) break;
+			ServerLevel level = ServerContainerAccess.level(server, target.key().dimension());
+			Long2ObjectOpenHashMap<ContainerScanTarget> targets = level != null
+					? this.activeContainerTargets.get(level) : null;
+			if (targets == null || !target.equals(targets.get(BlockPos.asLong(
+					target.key().x(), target.key().y(), target.key().z())))) continue;
+			this.scanContainer(server, target, batch);
+			batch.dirtyScans++;
 		}
-		int start = Math.floorMod(this.containerScanCursor, total);
-		int budget = Math.min(CONTAINER_SCANS_PER_PASS, total);
-		long deadline = System.nanoTime() + CONTAINER_SCAN_BUDGET_NANOS;
-		int scanned = 0;
-		Map<SharedProject, List<SharedProject.ContainerKey>> changed = new LinkedHashMap<>();
-		Map<SharedProject, List<SharedProject.ContainerKey>> removed = new LinkedHashMap<>();
-		for (int offset = 0; offset < budget; offset++) {
-			if (offset > 0 && System.nanoTime() >= deadline) break;
-			ContainerScanTarget target = this.containerScanOrder.get((start + offset) % total);
-			SharedProject project = target.project();
-			SharedProject.ContainerKey key = target.key();
-			ServerLevel level = ServerContainerAccess.level(server, key.dimension());
-			scanned++;
-			if (level == null) continue;
-			ServerContainerAccess.ReadResult result = ServerContainerAccess.read(level,
-					new BlockPos(key.x(), key.y(), key.z()));
-			if (result.shouldRemoveMark() && project.removeContainer(key)) {
-				removed.computeIfAbsent(project, ignored -> new ArrayList<>()).add(key);
+
+		if (tick >= this.nextContainerScanTick && System.nanoTime() < deadline) {
+			this.nextContainerScanTick = tick + CONTAINER_SCAN_INTERVAL_TICKS;
+			int total = this.containerScanOrder.size();
+			if (total == 0) {
+				this.containerScanCursor = 0;
+			} else {
+				int start = Math.floorMod(this.containerScanCursor, total);
+				int budget = Math.min(CONTAINER_SCANS_PER_PASS, total);
+				int scanned = 0;
+				for (int offset = 0; offset < budget; offset++) {
+					if (offset > 0 && System.nanoTime() >= deadline) break;
+					ContainerScanTarget target = this.containerScanOrder.get((start + offset) % total);
+					this.scanContainer(server, target, batch);
+					scanned++;
+					batch.fallbackScans++;
+				}
+				if (scanned > 0) this.containerScanCursor = (start + scanned) % total;
+			}
+		}
+
+		this.finishContainerScans(batch);
+		int changed = batch.changed.values().stream().mapToInt(List::size).sum();
+		int removed = batch.removed.values().stream().mapToInt(List::size).sum();
+		this.diagnostics.recordScanWork(batch.dirtyScans, batch.fallbackScans, changed, removed,
+				System.nanoTime() - started);
+	}
+
+	private void scanContainer(MinecraftServer server, ContainerScanTarget target, ContainerScanBatch batch) {
+		SharedProject project = target.project();
+		SharedProject.ContainerKey key = target.key();
+		SharedProject.ContainerState previous = project.containers().get(key);
+		if (previous == null) return;
+
+		ServerLevel level = ServerContainerAccess.level(server, key.dimension());
+		ServerContainerAccess.ReadResult result = level != null
+				? ServerContainerAccess.read(level, new BlockPos(key.x(), key.y(), key.z()))
+				: new ServerContainerAccess.ReadResult(ServerContainerAccess.ReadStatus.UNLOADED, Map.of());
+		long now = System.currentTimeMillis();
+
+		if (result.status() == ServerContainerAccess.ReadStatus.NOT_CONTAINER
+				&& previous.status() == ContainerSyncStatus.MISSING
+				&& now - previous.lastUpdatedEpochMillis() >= MISSING_CONTAINER_GRACE_MILLIS) {
+			if (project.removeContainer(key)) {
+				batch.removed.computeIfAbsent(project, ignored -> new ArrayList<>()).add(key);
 				this.pendingProjectRecipients.computeIfAbsent(project.id(), ignored -> new LinkedHashSet<>());
 				this.containerScanDirty = true;
-			} else if (result.status() == ServerContainerAccess.ReadStatus.AVAILABLE
-					&& result.items().size() <= ShareProtocol.MAX_ITEM_TYPES_PER_CONTAINER
-					&& project.refreshContainer(key, result.items())) {
-				changed.computeIfAbsent(project, ignored -> new ArrayList<>()).add(key);
 			}
+			return;
 		}
-		if (scanned > 0) this.containerScanCursor = (start + scanned) % total;
-		if (!changed.isEmpty() || !removed.isEmpty()) {
-			Set<SharedProject> affected = new LinkedHashSet<>();
-			affected.addAll(changed.keySet());
-			affected.addAll(removed.keySet());
-			for (SharedProject project : affected) {
-				if (!removed.containsKey(project)) project.commitContainerRefresh();
+
+		ContainerSyncStatus status;
+		Map<String, Integer> items;
+		switch (result.status()) {
+			case AVAILABLE -> {
+				if (result.items().size() > ShareProtocol.MAX_ITEM_TYPES_PER_CONTAINER) {
+					status = ContainerSyncStatus.TOO_COMPLEX;
+					items = previous.items();
+				} else {
+					status = ContainerSyncStatus.SYNCED;
+					items = result.items();
+				}
 			}
-			this.store.save();
-			for (SharedProject project : affected) {
-				List<SharedProject.ContainerKey> changedKeys = changed.getOrDefault(project, List.of());
-				List<SharedProject.ContainerKey> removedKeys = removed.getOrDefault(project, List.of());
-				this.sendContainerDelta(project,
-						changedKeys.stream().map(project::containerView).toList(),
-						removedKeys.stream().map(ShareServer::wireKey).toList());
+			case UNLOADED -> {
+				status = ContainerSyncStatus.UNLOADED;
+				items = previous.items();
 			}
+			case TOO_COMPLEX -> {
+				status = ContainerSyncStatus.TOO_COMPLEX;
+				items = previous.items();
+			}
+			case NOT_CONTAINER -> {
+				status = ContainerSyncStatus.MISSING;
+				items = Map.of();
+			}
+			default -> throw new IllegalStateException("Unhandled container read status");
+		}
+		if (project.refreshContainer(key, items, status, now)) {
+			batch.changed.computeIfAbsent(project, ignored -> new ArrayList<>()).add(key);
+		}
+	}
+
+	private void finishContainerScans(ContainerScanBatch batch) {
+		if (batch.changed.isEmpty() && batch.removed.isEmpty()) return;
+		Set<SharedProject> affected = new LinkedHashSet<>();
+		affected.addAll(batch.changed.keySet());
+		affected.addAll(batch.removed.keySet());
+		for (SharedProject project : affected) {
+			if (!batch.removed.containsKey(project)) project.commitContainerRefresh();
+		}
+		this.store.save();
+		for (SharedProject project : affected) {
+			List<SharedProject.ContainerKey> changedKeys = batch.changed.getOrDefault(project, List.of());
+			List<SharedProject.ContainerKey> removedKeys = batch.removed.getOrDefault(project, List.of());
+			this.sendContainerDelta(project,
+					changedKeys.stream().map(project::containerView).filter(java.util.Objects::nonNull).toList(),
+					removedKeys.stream().map(ShareServer::wireKey).toList());
 		}
 	}
 
@@ -815,10 +929,16 @@ public final class ShareServer {
 		}
 
 		List<ContainerScanTarget> order = new ArrayList<>();
+		this.activeContainerTargets.clear();
 		for (SharedProject project : this.store.projects()) {
 			if (!activeProjects.contains(project.id())) continue;
 			for (SharedProject.ContainerKey key : project.containers().keySet()) {
-				order.add(new ContainerScanTarget(project, key));
+				ContainerScanTarget target = new ContainerScanTarget(project, key);
+				order.add(target);
+				ServerLevel level = ServerContainerAccess.level(server, key.dimension());
+				if (level != null) this.activeContainerTargets.computeIfAbsent(level,
+						ignored -> new Long2ObjectOpenHashMap<>())
+						.put(BlockPos.asLong(key.x(), key.y(), key.z()), target);
 			}
 		}
 		this.containerScanOrder = List.copyOf(order);
@@ -828,6 +948,72 @@ public final class ShareServer {
 
 	private int totalContainerCount() {
 		return this.store.projects().stream().mapToInt(project -> project.containers().size()).sum();
+	}
+
+	private int sendDiagnostics(CommandSourceStack source) {
+		MinecraftServer server = source.getServer();
+		long containers = 0L;
+		long synced = 0L;
+		long pending = 0L;
+		long unloaded = 0L;
+		long missing = 0L;
+		long complex = 0L;
+		long oldestUpdate = 0L;
+		for (SharedProject project : this.store.projects()) {
+			for (SharedProject.ContainerState state : project.containers().values()) {
+				containers++;
+				switch (state.status()) {
+					case SYNCED -> synced++;
+					case PENDING -> pending++;
+					case UNLOADED -> unloaded++;
+					case MISSING -> missing++;
+					case TOO_COMPLEX -> complex++;
+				}
+				long updated = state.lastUpdatedEpochMillis();
+				if (updated > 0L && (oldestUpdate == 0L || updated < oldestUpdate)) oldestUpdate = updated;
+			}
+		}
+		long oldestAgeSeconds = oldestUpdate > 0L
+				? Math.max(0L, (System.currentTimeMillis() - oldestUpdate) / 1_000L) : -1L;
+		long activeProjects = this.subscriptions.values().stream().distinct().count();
+		int inbound = this.pendingInbound.values().stream().mapToInt(AtomicInteger::get).sum();
+		long nowNanos = System.nanoTime();
+		long oldestSnapshotMillis = this.pendingSnapshots.values().stream()
+				.mapToLong(snapshot -> Math.max(0L, nowNanos - snapshot.queuedAtNanos) / 1_000_000L)
+				.max().orElse(-1L);
+		BoundedDirtyQueue.Stats queue = this.dirtyContainers.stats();
+		ShareDiagnostics.Snapshot scans = this.diagnostics.snapshot();
+		ShareStore.Diagnostics persistence = this.store.diagnostics();
+
+		this.diagnosticLine(source, Logisticmatica.MOD_NAME + " " + Logisticmatica.MOD_VERSION
+				+ " | protocol v" + ShareProtocol.VERSION + " | tick " + server.getTickCount());
+		this.diagnosticLine(source, "projects=" + this.store.projects().size()
+				+ " containers=" + containers + " activeProjects=" + activeProjects
+				+ " subscribers=" + this.subscriptions.size());
+		this.diagnosticLine(source, "status synced=" + synced + " pending=" + pending
+				+ " unloaded=" + unloaded + " missing=" + missing + " tooComplex=" + complex
+				+ " oldestUpdateSeconds=" + oldestAgeSeconds);
+		this.diagnosticLine(source, "dirtyQueue=" + queue.size() + "/" + queue.capacity()
+				+ " offered=" + queue.offered() + " coalesced=" + queue.coalesced()
+				+ " dropped=" + queue.dropped() + " processed=" + queue.processed());
+		this.diagnosticLine(source, "scans dirty=" + scans.dirtyScans()
+				+ " fallback=" + scans.fallbackScans() + " changes=" + scans.changedContainers()
+				+ " removals=" + scans.removedContainers() + " lastMicros="
+				+ scans.lastScanNanos() / 1_000L + " maxMicros=" + scans.maxScanNanos() / 1_000L);
+		this.diagnosticLine(source, "sync outboundPlayers=" + this.outboundPlayers.size()
+				+ " snapshots=" + this.pendingSnapshots.size() + " deltas=" + this.pendingDeltas.size()
+				+ " projectUpdates=" + this.pendingProjectRecipients.size()
+				+ " inboundActions=" + inbound + " packets=" + scans.syncPackets()
+				+ " oldestSnapshotMillis=" + oldestSnapshotMillis);
+		this.diagnosticLine(source, "store dirty=" + persistence.dirty()
+				+ " writerRunning=" + persistence.writerRunning()
+				+ " writePending=" + persistence.writePending()
+				+ " nextSaveTick=" + persistence.nextSaveTick());
+		return 1;
+	}
+
+	private void diagnosticLine(CommandSourceStack source, String text) {
+		source.sendSuccess(() -> Component.literal(text), false);
 	}
 
 	private void changed(SharedProject project, ServerPlayer actor) {
@@ -968,6 +1154,7 @@ public final class ShareServer {
 						snapshot.requestId, ShareWire.encodeContainerSnapshot(packet)));
 				snapshot.cursor = to;
 				sent++;
+				this.diagnostics.recordSyncPacket();
 				if (complete) {
 					this.pendingSnapshots.remove(playerId);
 					this.containerScanDirty = true;
@@ -984,6 +1171,7 @@ public final class ShareServer {
 			this.send(player, ClientboundSharePayload.of(ShareProtocol.ClientboundEvent.CONTAINERS_CHANGED,
 					UUID.randomUUID(), ShareWire.encodeContainerDelta(packet)));
 			sent++;
+			this.diagnostics.recordSyncPacket();
 		}
 	}
 

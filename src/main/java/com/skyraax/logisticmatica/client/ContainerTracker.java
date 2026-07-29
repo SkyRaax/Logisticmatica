@@ -31,6 +31,7 @@ import fi.dy.masa.malilib.util.data.json.JsonUtils;
 import fi.dy.masa.litematica.schematic.LitematicaSchematic;
 
 import com.skyraax.logisticmatica.Logisticmatica;
+import com.skyraax.logisticmatica.share.ContainerSyncStatus;
 
 /**
  * Tracks which containers are marked, <em>bound to a specific schematic</em>, and caches their
@@ -58,6 +59,10 @@ public class ContainerTracker {
 	private final Map<BlockPos, String> keyByPos = new HashMap<>();
 	/** Insertion-ordered content cache; marked positions are never evicted. */
 	private final Map<BlockPos, Object2IntOpenHashMap<ItemType>> contents = new LinkedHashMap<>();
+	/** Latest availability information, authoritative for server bindings. */
+	private final Map<BlockPos, ContainerSyncStatus> syncStatuses = new HashMap<>();
+	/** Wall-clock time of the latest content or availability transition. */
+	private final Map<BlockPos, Long> lastUpdatedEpochMillis = new HashMap<>();
 	/** Authoritative bindings injected from the sharing server; never persisted in the client file. */
 	private final Map<UUID, LinkedHashSet<BlockPos>> serverBindings = new LinkedHashMap<>();
 	/** Reverse lookup for removing one project's live snapshot without disturbing another. */
@@ -198,6 +203,8 @@ public class ContainerTracker {
 		this.contents.clear();
 		this.serverBindings.clear();
 		this.serverProjectByPos.clear();
+		this.syncStatuses.clear();
+		this.lastUpdatedEpochMillis.clear();
 		this.displacedLocalBindings.clear();
 		this.hiddenVisuals.clear();
 	}
@@ -222,6 +229,8 @@ public class ContainerTracker {
 				if (marked.isEmpty()) this.markedBySchematic.remove(projectKey);
 			}
 			this.contents.remove(pos);
+			this.syncStatuses.remove(pos);
+			this.lastUpdatedEpochMillis.remove(pos);
 			this.restoreDisplaced(projectId, pos);
 		}
 	}
@@ -243,6 +252,8 @@ public class ContainerTracker {
 			if (displaced != null) displaced.remove(pos);
 			local.add(pos);
 			this.keyByPos.put(pos, schematicKey);
+			this.syncStatuses.put(pos, ContainerSyncStatus.SYNCED);
+			this.lastUpdatedEpochMillis.put(pos, System.currentTimeMillis());
 		}
 		if (projectPositions != null && projectPositions.isEmpty()) this.markedBySchematic.remove(projectKey);
 		this.save();
@@ -254,10 +265,22 @@ public class ContainerTracker {
 	 * @return true when a matching local binding was promoted to server ownership
 	 */
 	public boolean setServerBinding(UUID projectId, BlockPos pos, Map<String, Integer> items) {
-		return this.setServerBinding(projectId, pos, items, false);
+		return this.setServerBinding(projectId, pos, items, ContainerSyncStatus.SYNCED,
+				System.currentTimeMillis(), false);
 	}
 
 	public boolean setServerBinding(UUID projectId, BlockPos pos, Map<String, Integer> items, boolean promoteLocal) {
+		return this.setServerBinding(projectId, pos, items, ContainerSyncStatus.SYNCED,
+				System.currentTimeMillis(), promoteLocal);
+	}
+
+	public boolean setServerBinding(UUID projectId, BlockPos pos, Map<String, Integer> items,
+			ContainerSyncStatus status, long lastUpdatedEpochMillis) {
+		return this.setServerBinding(projectId, pos, items, status, lastUpdatedEpochMillis, false);
+	}
+
+	public boolean setServerBinding(UUID projectId, BlockPos pos, Map<String, Integer> items,
+			ContainerSyncStatus status, long lastUpdatedEpochMillis, boolean promoteLocal) {
 		BlockPos immutable = pos.immutable();
 		String key = projectKey(projectId);
 		String existing = this.keyByPos.get(immutable);
@@ -298,6 +321,8 @@ public class ContainerTracker {
 			if (type != null && item.getValue() > 0) snapshot.addTo(type, item.getValue());
 		}
 		this.contents.put(immutable, snapshot);
+		this.syncStatuses.put(immutable, status);
+		this.lastUpdatedEpochMillis.put(immutable, Math.max(0L, lastUpdatedEpochMillis));
 		return promoted;
 	}
 
@@ -320,7 +345,10 @@ public class ContainerTracker {
 
 	/** Caches a container's contents, whether or not it is currently marked. */
 	public void setContents(BlockPos canonical, Object2IntOpenHashMap<ItemType> counts) {
-		this.contents.put(canonical.immutable(), counts);
+		BlockPos immutable = canonical.immutable();
+		this.contents.put(immutable, counts);
+		this.syncStatuses.put(immutable, ContainerSyncStatus.SYNCED);
+		this.lastUpdatedEpochMillis.put(immutable, System.currentTimeMillis());
 		this.evictUntilWithinCap();
 	}
 	public void removeServerBinding(UUID projectId, BlockPos pos) {
@@ -341,6 +369,8 @@ public class ContainerTracker {
 			if (marked.isEmpty()) this.markedBySchematic.remove(key);
 		}
 		this.contents.remove(immutable);
+		this.syncStatuses.remove(immutable);
+		this.lastUpdatedEpochMillis.remove(immutable);
 		this.restoreDisplaced(projectId, immutable);
 	}
 
@@ -354,8 +384,12 @@ public class ContainerTracker {
 		this.keyByPos.put(pos, local.schematicKey());
 		if (local.contents() != null) {
 			this.contents.put(pos, local.contents());
+			this.syncStatuses.put(pos, ContainerSyncStatus.SYNCED);
+			this.lastUpdatedEpochMillis.put(pos, System.currentTimeMillis());
 		} else {
 			this.contents.remove(pos);
+			this.syncStatuses.put(pos, ContainerSyncStatus.PENDING);
+			this.lastUpdatedEpochMillis.remove(pos);
 		}
 	}
 
@@ -372,6 +406,14 @@ public class ContainerTracker {
 	@Nullable
 	public Object2IntOpenHashMap<ItemType> getContents(BlockPos canonical) {
 		return this.contents.get(canonical.immutable());
+	}
+
+	public ContainerSyncStatus getSyncStatus(BlockPos pos) {
+		return this.syncStatuses.getOrDefault(pos.immutable(), ContainerSyncStatus.PENDING);
+	}
+
+	public long getLastUpdatedEpochMillis(BlockPos pos) {
+		return this.lastUpdatedEpochMillis.getOrDefault(pos.immutable(), 0L);
 	}
 
 	/** Immutable item-id snapshot used to describe authoritative content deltas to the player. */
@@ -413,8 +455,11 @@ public class ContainerTracker {
 		Iterator<BlockPos> iterator = this.contents.keySet().iterator();
 
 		while (iterator.hasNext() && this.contents.size() > MAX_CACHED_CONTAINERS) {
-			if (!this.keyByPos.containsKey(iterator.next())) {
+			BlockPos pos = iterator.next();
+			if (!this.keyByPos.containsKey(pos)) {
 				iterator.remove();
+				this.syncStatuses.remove(pos);
+				this.lastUpdatedEpochMillis.remove(pos);
 			}
 		}
 	}
@@ -543,6 +588,8 @@ public class ContainerTracker {
 
 					if (!snapshot.isEmpty()) {
 						this.contents.put(pos, snapshot);
+						this.syncStatuses.put(pos, ContainerSyncStatus.SYNCED);
+						this.lastUpdatedEpochMillis.put(pos, 0L);
 					}
 				}
 			}

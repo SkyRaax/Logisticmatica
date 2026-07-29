@@ -1,6 +1,11 @@
 package com.skyraax.logisticmatica.client.gui;
 
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import javax.annotation.Nullable;
 
@@ -17,11 +22,11 @@ import fi.dy.masa.malilib.render.RenderUtils;
 import fi.dy.masa.malilib.util.InfoUtils;
 import fi.dy.masa.malilib.util.StringUtils;
 
-import com.skyraax.logisticmatica.client.config.Configs;
 import com.skyraax.logisticmatica.client.ContainerLocator;
 import com.skyraax.logisticmatica.client.ContainerTracker;
 import com.skyraax.logisticmatica.client.SchematicColors;
 import com.skyraax.logisticmatica.client.SchematicKey;
+import com.skyraax.logisticmatica.client.config.Configs;
 import com.skyraax.logisticmatica.client.gui.ContainerData.ItemCount;
 import com.skyraax.logisticmatica.client.gui.ContainerData.Snapshot;
 
@@ -101,8 +106,10 @@ public class WidgetContainerEntry extends WidgetListEntryBase<Snapshot> {
 		this.drawString(ctx, findX, this.y + 4, locating ? 0xFFFFFF55 : 0xFF55FFFF, findStatus);
 		this.drawString(ctx, visualX, this.y + 4, visualsVisible ? 0xFF55FF55 : 0xFFAAAAAA, visualStatus);
 
-		// Bottom line: distance from the player, then a summary of the most-plentiful items.
-		this.drawString(ctx, textX, this.y + 22, 0xFFAAAAAA, this.distanceAndSummary(pos));
+		// Bottom line: authoritative sync health, age, distance, then the item summary.
+		String status = this.statusLabel();
+		String details = status + "  -  " + this.updatedAgo() + "  -  " + this.distanceAndSummary(pos);
+		this.drawString(ctx, textX, this.y + 22, this.statusColor(), details);
 
 		super.render(ctx, mouseX, mouseY, selected);
 	}
@@ -151,11 +158,21 @@ public class WidgetContainerEntry extends WidgetListEntryBase<Snapshot> {
 	public void postRenderHovered(GuiContext ctx, int mouseX, int mouseY, boolean selected) {
 		super.postRenderHovered(ctx, mouseX, mouseY, selected);
 		if (this.snapshot == null || !this.isMouseOver(mouseX, mouseY)) return;
+		List<String> lines = new ArrayList<>();
+		lines.add(this.statusLabel());
+		if (this.snapshot.lastUpdatedEpochMillis() > 0L) {
+			String exact = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss z")
+					.withZone(ZoneId.systemDefault())
+					.format(Instant.ofEpochMilli(this.snapshot.lastUpdatedEpochMillis()));
+			lines.add(StringUtils.translate("logisticmatica.gui.container.last_updated", exact));
+		} else {
+			lines.add(StringUtils.translate("logisticmatica.gui.container.updated.never"));
+		}
 		UUID projectId = SchematicKey.projectId(this.snapshot.schematicKey());
 		if (projectId != null) {
-			RenderUtils.drawHoverText(ctx, mouseX, mouseY, List.of(StringUtils.translate(
-					"logisticmatica.gui.container.project_id", projectId)));
+			lines.add(StringUtils.translate("logisticmatica.gui.container.project_id", projectId));
 		}
+		RenderUtils.drawHoverText(ctx, mouseX, mouseY, lines);
 	}
 
 	private String ellipsize(String value, int maximumWidth) {
@@ -164,6 +181,43 @@ public class WidgetContainerEntry extends WidgetListEntryBase<Snapshot> {
 		int end = value.length();
 		while (end > 1 && this.getStringWidth(value.substring(0, end) + suffix) > maximumWidth) end--;
 		return value.substring(0, end) + suffix;
+	}
+
+	private String statusLabel() {
+		return StringUtils.translate("logisticmatica.gui.container.status."
+				+ this.snapshot.syncStatus().name().toLowerCase(Locale.ROOT));
+	}
+
+	private int statusColor() {
+		return switch (this.snapshot.syncStatus()) {
+			case SYNCED -> 0xFF55FF55;
+			case PENDING, UNLOADED -> 0xFFFFAA00;
+			case MISSING -> 0xFFFF5555;
+			case TOO_COMPLEX -> 0xFFFF55FF;
+		};
+	}
+
+	private String updatedAgo() {
+		long updated = this.snapshot.lastUpdatedEpochMillis();
+		if (updated <= 0L) {
+			return StringUtils.translate("logisticmatica.gui.container.updated.never");
+		}
+		long seconds = Math.max(0L, (System.currentTimeMillis() - updated) / 1_000L);
+		if (seconds < 5L) {
+			return StringUtils.translate("logisticmatica.gui.container.updated.now");
+		}
+		if (seconds < 60L) {
+			return StringUtils.translate("logisticmatica.gui.container.updated.seconds", seconds);
+		}
+		long minutes = seconds / 60L;
+		if (minutes < 60L) {
+			return StringUtils.translate("logisticmatica.gui.container.updated.minutes", minutes);
+		}
+		long hours = minutes / 60L;
+		if (hours < 24L) {
+			return StringUtils.translate("logisticmatica.gui.container.updated.hours", hours);
+		}
+		return StringUtils.translate("logisticmatica.gui.container.updated.days", hours / 24L);
 	}
 
 	private String distanceAndSummary(BlockPos pos) {

@@ -449,5 +449,17 @@
 	"logisticmatica.share.activity.status": "%s project status changed to %s.",
 	"logisticmatica.share.activity.none": "none",
 	"logisticmatica.share.activity.and_more": "and %s more",
-	"logisticmatica.gui.share.roles_world_note": "These permissions affect Logisticmatica project data, not building or container access in the Minecraft world."
+	"logisticmatica.gui.share.roles_world_note": "These permissions affect Logisticmatica project data, not building or container access in the Minecraft world.",
+	"logisticmatica.gui.container.status.pending": "Pending first scan",
+	"logisticmatica.gui.container.status.synced": "Synced",
+	"logisticmatica.gui.container.status.unloaded": "Chunk unloaded",
+	"logisticmatica.gui.container.status.missing": "Container missing",
+	"logisticmatica.gui.container.status.too_complex": "Contents too complex",
+	"logisticmatica.gui.container.updated.now": "updated now",
+	"logisticmatica.gui.container.updated.seconds": "updated %s s ago",
+	"logisticmatica.gui.container.updated.minutes": "updated %s min ago",
+	"logisticmatica.gui.container.updated.hours": "updated %s h ago",
+	"logisticmatica.gui.container.updated.days": "updated %s d ago",
+	"logisticmatica.gui.container.updated.never": "not scanned yet",
+	"logisticmatica.gui.container.last_updated": "Last update: %s"
 }

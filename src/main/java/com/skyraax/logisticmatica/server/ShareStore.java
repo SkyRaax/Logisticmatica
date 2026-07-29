@@ -58,6 +58,7 @@ public final class ShareStore {
 	private long nextSaveTick;
 
 	private record WriteRequest(Path target, byte[] bytes) {}
+	record Diagnostics(boolean dirty, boolean writerRunning, boolean writePending, long nextSaveTick) {}
 
 	public Collection<SharedProject> projects() {
 		return this.projects.values();
@@ -79,6 +80,13 @@ public final class ShareStore {
 	@Nullable
 	public SharedProject remove(UUID id) {
 		return this.projects.remove(id);
+	}
+
+	Diagnostics diagnostics() {
+		synchronized (this.writeLock) {
+			return new Diagnostics(this.dirty, this.writerRunning,
+					this.pendingWrite != null, this.nextSaveTick);
+		}
 	}
 
 	public void start(MinecraftServer server) {
@@ -280,7 +288,7 @@ public final class ShareStore {
 				.mapToInt(existing -> existing.containers().size()).sum() + project.containers().size();
 		if (totalContainers > ShareProtocol.MAX_CONTAINERS_GLOBAL) return false;
 		return project.containers().values().stream()
-				.allMatch(items -> items.size() <= ShareProtocol.MAX_ITEM_TYPES_PER_CONTAINER);
+				.allMatch(state -> state.items().size() <= ShareProtocol.MAX_ITEM_TYPES_PER_CONTAINER);
 	}
 
 	private Path blobPath(String hash) throws IOException {

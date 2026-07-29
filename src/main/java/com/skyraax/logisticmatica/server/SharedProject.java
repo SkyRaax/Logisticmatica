@@ -12,6 +12,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
+import com.skyraax.logisticmatica.share.ContainerSyncStatus;
 import com.skyraax.logisticmatica.share.ProjectStatus;
 import com.skyraax.logisticmatica.share.ShareAccess;
 import com.skyraax.logisticmatica.share.SharePermission;
@@ -21,9 +22,18 @@ import com.skyraax.logisticmatica.share.SharedProjectView;
 
 /** Mutable server-owned state for one shared placement. Accessed only on the logical server thread. */
 public final class SharedProject {
-	public static final int SCHEMA_VERSION = 4;
+	public static final int SCHEMA_VERSION = 5;
 
 	public record ContainerKey(String dimension, int x, int y, int z) {
+	}
+
+	public record ContainerState(Map<String, Integer> items, ContainerSyncStatus status,
+			long lastUpdatedEpochMillis) {
+		public ContainerState {
+			items = Map.copyOf(items);
+			status = status == null ? ContainerSyncStatus.PENDING : status;
+			lastUpdatedEpochMillis = Math.max(0L, lastUpdatedEpochMillis);
+		}
 	}
 
 	public static final class Member {
@@ -79,7 +89,7 @@ public final class SharedProject {
 	private ShareAccess publicAccess = ShareAccess.REQUEST_ONLY;
 	private final Map<UUID, Member> members = new LinkedHashMap<>();
 	private final Map<String, String> substitutions = new LinkedHashMap<>();
-	private final Map<ContainerKey, Map<String, Integer>> containers = new LinkedHashMap<>();
+	private final Map<ContainerKey, ContainerState> containers = new LinkedHashMap<>();
 
 	public SharedProject(UUID id, UUID ownerId, String ownerName, String name, String dimension,
 			int x, int y, int z, int rotation, int mirror, String schematicHash, int schematicSize) {
@@ -117,7 +127,7 @@ public final class SharedProject {
 	public ShareAccess publicAccess() { return this.publicAccess; }
 	public Map<UUID, Member> members() { return this.members; }
 	public Map<String, String> substitutions() { return this.substitutions; }
-	public Map<ContainerKey, Map<String, Integer>> containers() { return this.containers; }
+	public Map<ContainerKey, ContainerState> containers() { return this.containers; }
 
 	public boolean visibleTo(UUID playerId) {
 		return true;
@@ -252,11 +262,16 @@ public final class SharedProject {
 		return false;
 	}
 
-	/** Updates a cache snapshot and returns true when its contents actually changed. */
+	/** Updates a cache snapshot and returns true when its contents or sync status changed. */
 	public boolean putContainer(ContainerKey key, Map<String, Integer> items) {
-		Map<String, Integer> immutable = Map.copyOf(items);
-		Map<String, Integer> previous = this.containers.put(key, immutable);
-		if (!immutable.equals(previous)) {
+		return this.putContainer(key, items, ContainerSyncStatus.SYNCED, System.currentTimeMillis());
+	}
+
+	public boolean putContainer(ContainerKey key, Map<String, Integer> items,
+			ContainerSyncStatus status, long lastUpdatedEpochMillis) {
+		ContainerState current = new ContainerState(items, status, lastUpdatedEpochMillis);
+		ContainerState previous = this.containers.put(key, current);
+		if (!current.equals(previous)) {
 			this.bumpRevision();
 			this.bumpContainerRevision();
 			return true;
@@ -264,12 +279,21 @@ public final class SharedProject {
 		return false;
 	}
 
-	/** Updates volatile inventory contents without invalidating placement-edit revisions. */
+	/** Updates volatile inventory state without invalidating placement-edit revisions. */
 	public boolean refreshContainer(ContainerKey key, Map<String, Integer> items) {
-		Map<String, Integer> immutable = Map.copyOf(items);
-		Map<String, Integer> previous = this.containers.put(key, immutable);
-		return !immutable.equals(previous);
+		return this.refreshContainer(key, items, ContainerSyncStatus.SYNCED, System.currentTimeMillis());
 	}
+
+	public boolean refreshContainer(ContainerKey key, Map<String, Integer> items,
+			ContainerSyncStatus status, long changedAtEpochMillis) {
+		ContainerState previous = this.containers.get(key);
+		if (previous == null) return false;
+		Map<String, Integer> immutable = Map.copyOf(items);
+		if (previous.items().equals(immutable) && previous.status() == status) return false;
+		this.containers.put(key, new ContainerState(immutable, status, changedAtEpochMillis));
+		return true;
+	}
+
 	/** Commits one logical batch of volatile inventory refreshes. */
 	public void commitContainerRefresh() {
 		this.bumpContainerRevision();
@@ -278,7 +302,6 @@ public final class SharedProject {
 	public List<SharedContainerView> containerSnapshot() {
 		return this.containers.entrySet().stream().map(entry -> this.containerView(entry.getKey())).toList();
 	}
-
 
 	public boolean removeContainer(ContainerKey key) {
 		if (this.containers.remove(key) != null) {
@@ -293,19 +316,20 @@ public final class SharedProject {
 		this.revision = Math.max(1L, this.revision + 1L);
 	}
 
-
 	private void bumpContainerRevision() {
 		this.containerRevision = Math.max(1L, this.containerRevision + 1L);
 	}
 
 	@Nullable
 	public SharedContainerView containerView(ContainerKey key) {
-		Map<String, Integer> items = this.containers.get(key);
-		if (items == null) {
+		ContainerState state = this.containers.get(key);
+		if (state == null) {
 			return null;
 		}
-		return new SharedContainerView(key.dimension(), key.x(), key.y(), key.z(), items);
+		return new SharedContainerView(key.dimension(), key.x(), key.y(), key.z(), state.items(),
+				state.status(), state.lastUpdatedEpochMillis());
 	}
+
 	public SharedProjectView viewFor(UUID playerId, boolean administrator) {
 		int permissions = administrator ? SharePermission.ALL : this.permissionsFor(playerId);
 		Member viewer = this.members.get(playerId);
@@ -372,14 +396,16 @@ public final class SharedProject {
 		json.add("substitutions", substitutionsJson);
 
 		JsonArray containersJson = new JsonArray();
-		for (Map.Entry<ContainerKey, Map<String, Integer>> container : this.containers.entrySet()) {
+		for (Map.Entry<ContainerKey, ContainerState> container : this.containers.entrySet()) {
 			JsonObject entry = new JsonObject();
 			entry.addProperty("dimension", container.getKey().dimension());
 			entry.addProperty("x", container.getKey().x());
 			entry.addProperty("y", container.getKey().y());
 			entry.addProperty("z", container.getKey().z());
+			entry.addProperty("status", container.getValue().status().name());
+			entry.addProperty("lastUpdated", container.getValue().lastUpdatedEpochMillis());
 			JsonObject items = new JsonObject();
-			container.getValue().forEach(items::addProperty);
+			container.getValue().items().forEach(items::addProperty);
 			entry.add("items", items);
 			containersJson.add(entry);
 		}
@@ -436,7 +462,14 @@ public final class SharedProject {
 							items.put(item.getKey(), count);
 						}
 					}
-					project.containers.put(key, Map.copyOf(items));
+					ContainerSyncStatus status = ContainerSyncStatus.PENDING;
+					if (container.has("status")) {
+						try { status = ContainerSyncStatus.valueOf(container.get("status").getAsString()); }
+						catch (IllegalArgumentException ignored) {}
+					}
+					long lastUpdated = container.has("lastUpdated")
+							? Math.max(0L, container.get("lastUpdated").getAsLong()) : 0L;
+					project.containers.put(key, new ContainerState(items, status, lastUpdated));
 				}
 			}
 

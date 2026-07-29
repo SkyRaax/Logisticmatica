@@ -2,7 +2,7 @@ package com.skyraax.logisticmatica.share;
 
 /** Wire-level constants and stable message identifiers for the sharing protocol. */
 public final class ShareProtocol {
-	public static final int VERSION = 5;
+	public static final int VERSION = 6;
 	public static final int MAX_SCHEMATIC_BYTES = 32 * 1024 * 1024;
 	public static final int MAX_ENVELOPE_BYTES = MAX_SCHEMATIC_BYTES + 4 * 1024 * 1024;
 	public static final int MAX_PROJECTS_PER_PLAYER = 256;
@@ -23,10 +23,11 @@ public final class ShareProtocol {
 	public static final int FEATURE_PUBLIC_ACCESS = 1 << 6;
 	public static final int FEATURE_CONTAINER_DELTAS = 1 << 7;
 	public static final int FEATURE_PROJECT_STATUS = 1 << 8;
+	public static final int FEATURE_CONTAINER_STATUS = 1 << 9;
 	public static final int FEATURES = FEATURE_SCHEMATIC_TRANSFER | FEATURE_LIVE_PLACEMENT
 			| FEATURE_PERMISSIONS | FEATURE_SUBSTITUTIONS | FEATURE_SERVER_CONTAINERS
 			| FEATURE_PROJECT_DIRECTORY | FEATURE_PUBLIC_ACCESS | FEATURE_CONTAINER_DELTAS
-			| FEATURE_PROJECT_STATUS;
+			| FEATURE_PROJECT_STATUS | FEATURE_CONTAINER_STATUS;
 
 	private ShareProtocol() {
 	}

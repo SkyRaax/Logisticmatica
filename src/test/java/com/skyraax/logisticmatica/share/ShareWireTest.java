@@ -31,7 +31,8 @@ class ShareWireTest {
 	void containerImportsRoundTripWithCachedContents() throws IOException {
 		List<SharedContainerView> expected = List.of(
 				new SharedContainerView("minecraft:overworld", 1, 64, -2,
-						Map.of("minecraft:stone", 64, "minecraft:redstone", 12)));
+						Map.of("minecraft:stone", 64, "minecraft:redstone", 12),
+						ContainerSyncStatus.UNLOADED, 1_722_222_222_000L));
 		ShareWire.Reader reader = ShareWire.decode(ShareWire.encode(writer -> writer.writeContainers(expected)));
 
 		assertEquals(expected, reader.readContainers());

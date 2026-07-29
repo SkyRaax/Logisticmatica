@@ -1,4 +1,4 @@
-# Logisticmatica sharing protocol v5
+# Logisticmatica sharing protocol v6
 
 Logisticmatica uses a server-authoritative Fabric play protocol. The server owns project membership,
 permissions, placement transforms, schematic versions, substitutions and tracked-container state.
@@ -168,18 +168,26 @@ upload-time promotion. A player can subscribe to exactly one active project. Unf
 no container reads, snapshots, deltas or live project updates. On subscription the server queues an
 authoritative snapshot in chunks of at most 16 containers. Across the whole server no more than two
 container sync packets are emitted per tick, guarded by a two-millisecond work budget and round-robin
-fairness between players. Only projects with an authorized active subscriber are scanned: at most four
-registered positions every four ticks, additionally bounded by a 750-microsecond scan budget. Changed
-contents are coalesced per player and container before transmission. Filled shulker boxes and bundles
+fairness between players. Vanilla block-entity and block-state events enqueue only marked positions
+from projects with an authorized active subscriber. This dirty queue coalesces duplicate positions,
+is capped at 4,096 entries, processes at most eight positions per tick and shares the existing
+750-microsecond scan budget. A rotating fallback still reads at most four registered positions every
+four ticks, so missed modded inventory events eventually converge without turning every inventory
+change into immediate work. Queue overflow drops new dirty hints safely because the fallback remains
+authoritative. Changed contents are coalesced per player and container before transmission. Filled
+shulker boxes and bundles
 inside a tracked inventory are expanded from their vanilla data components to match Litematica's local
 material accounting. Nested traversal is capped by depth and stack-work limits; an over-complex value
 keeps the last valid snapshot instead of blocking the server thread.
 
-If a scanned position is loaded and no longer contains an inventory, the server removes the stale mark,
-persists the changed project and sends a removal delta to active subscribers. An unloaded chunk is not
-treated as a missing container and retains both its mark and last authoritative snapshot. Switching or
-clearing focus unsubscribes and removes that project's projected bindings immediately; returning later
-starts with a current snapshot.
+Each container snapshot includes an authoritative availability state and last-transition timestamp.
+The overview distinguishes Pending first scan, Synced, Chunk unloaded, Container missing and Contents
+too complex. An unloaded chunk retains both its mark and last authoritative contents. A loaded position
+without an inventory first becomes Missing with an empty material contribution; if a later scan still
+finds it missing after a five-second grace period, the stale mark is removed and a removal delta is
+sent. Too-complex nested contents retain the last valid material snapshot. Switching or clearing focus
+unsubscribes and removes that project's projected bindings immediately; returning later starts with a
+current snapshot.
 
 The material list, world highlights, floating content labels and look-at peek follow the explicit
 Logisticmatica focus. Shared container totals use the project UUID scope, so authoritative server
@@ -220,6 +228,11 @@ while a write is running, only the newest pending image is retained. Server shut
 final flush. Consequently a frequently changing inventory no longer writes the complete project store
 from the server tick that detected each change.
 
+Administrators with the same `logisticmatica.admin` permission used for project administration can run
+`/logisticmatica diagnostics`. Its bounded, read-only output reports projects, containers and status
+counts; active subscriptions; dirty-queue size, coalescing and drops; dirty/fallback scan totals and
+timings; pending snapshots/deltas/actions; emitted sync packets; oldest pending-snapshot and container
+transition age; and the asynchronous persistence writer state.
 
 ## Client notifications and persistence
 
