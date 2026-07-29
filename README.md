@@ -20,7 +20,9 @@ placement sharing with live sync and granular permissions.
 - [x] **Container tracking** — mark containers so their contents count towards the list,
       with a global visual switch, persistent per-container visibility, wall-penetrating highlights
       and a perspective-correct content preview in the world. A Find action flashes any selected
-      container's outline for 15 seconds.
+      container's outline for 15 seconds. Shared projects expand filled shulker boxes and bundles
+      stored inside marked containers to the same material counts as the local Litematica view;
+      destroyed or replaced containers are removed automatically once their chunk is loaded.
 - [x] **Material substitution** — persistently swap a material in a placement (e.g. a door
       wood type) for one you actually have, editable straight from the material list.
 - [x] **Placement sharing & live sync** *(server component)* — choose any loaded placement,

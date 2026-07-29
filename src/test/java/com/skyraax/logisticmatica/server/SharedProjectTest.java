@@ -65,6 +65,24 @@ class SharedProjectTest {
 	}
 
 	@Test
+	void destroyedContainerRemovalInvalidatesBothProjectViewsAndContainerSnapshots() {
+		UUID owner = UUID.randomUUID();
+		SharedProject project = project(owner);
+		SharedProject.ContainerKey key = new SharedProject.ContainerKey("minecraft:overworld", 8, 70, 12);
+		project.putContainer(key, Map.of("minecraft:stone", 64));
+		long revision = project.revision();
+		long containerRevision = project.containerRevision();
+
+		assertTrue(project.removeContainer(key));
+
+		assertEquals(revision + 1, project.revision());
+		assertEquals(containerRevision + 1, project.containerRevision());
+		assertEquals(0, project.viewFor(owner, false).containerCount());
+		assertTrue(project.containerSnapshot().isEmpty());
+		assertFalse(project.removeContainer(key));
+	}
+
+	@Test
 	void directoryListingHidesProtectedProjectContents() {
 		SharedProject project = project(UUID.randomUUID());
 		project.replaceSubstitutions(Map.of("minecraft:stone", "minecraft:dirt"));

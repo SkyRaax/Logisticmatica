@@ -170,9 +170,16 @@ authoritative snapshot in chunks of at most 16 containers. Across the whole serv
 container sync packets are emitted per tick, guarded by a two-millisecond work budget and round-robin
 fairness between players. Only projects with an authorized active subscriber are scanned: at most four
 registered positions every four ticks, additionally bounded by a 750-microsecond scan budget. Changed
-contents are coalesced per player and container before transmission. Switching or clearing focus
-unsubscribes and removes that project's projected bindings immediately; returning later starts with a
-current snapshot.
+contents are coalesced per player and container before transmission. Filled shulker boxes and bundles
+inside a tracked inventory are expanded from their vanilla data components to match Litematica's local
+material accounting. Nested traversal is capped by depth and stack-work limits; an over-complex value
+keeps the last valid snapshot instead of blocking the server thread.
+
+If a scanned position is loaded and no longer contains an inventory, the server removes the stale mark,
+persists the changed project and sends a removal delta to active subscribers. An unloaded chunk is not
+treated as a missing container and retains both its mark and last authoritative snapshot. Switching or
+clearing focus unsubscribes and removes that project's projected bindings immediately; returning later
+starts with a current snapshot.
 
 The material list, world highlights, floating content labels and look-at peek follow the explicit
 Logisticmatica focus. Shared container totals use the project UUID scope, so authoritative server

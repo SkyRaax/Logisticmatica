@@ -717,10 +717,18 @@ public final class ShareServer {
 			return;
 		}
 		ServerLevel level = ServerContainerAccess.level(player.level().getServer(), dimension);
-		Map<String, Integer> snapshot = level != null ? ServerContainerAccess.snapshot(level,
-				new BlockPos(key.x(), key.y(), key.z())) : null;
-		if (snapshot != null && snapshot.size() <= ShareProtocol.MAX_ITEM_TYPES_PER_CONTAINER
-				&& project.refreshContainer(key, snapshot)) {
+		if (level == null) return;
+		ServerContainerAccess.ReadResult result = ServerContainerAccess.read(level,
+				new BlockPos(key.x(), key.y(), key.z()));
+		if (result.shouldRemoveMark() && project.removeContainer(key)) {
+			this.store.save();
+			this.pendingProjectRecipients.computeIfAbsent(project.id(), ignored -> new LinkedHashSet<>())
+					.add(player.getUUID());
+			this.containerScanDirty = true;
+			this.sendContainerDelta(project, List.of(), List.of(wireKey(key)));
+		} else if (result.status() == ServerContainerAccess.ReadStatus.AVAILABLE
+				&& result.items().size() <= ShareProtocol.MAX_ITEM_TYPES_PER_CONTAINER
+				&& project.refreshContainer(key, result.items())) {
 			project.commitContainerRefresh();
 			this.store.save();
 			this.sendContainerDelta(project, List.of(project.containerView(key)), List.of());
@@ -747,28 +755,43 @@ public final class ShareServer {
 		long deadline = System.nanoTime() + CONTAINER_SCAN_BUDGET_NANOS;
 		int scanned = 0;
 		Map<SharedProject, List<SharedProject.ContainerKey>> changed = new LinkedHashMap<>();
+		Map<SharedProject, List<SharedProject.ContainerKey>> removed = new LinkedHashMap<>();
 		for (int offset = 0; offset < budget; offset++) {
 			if (offset > 0 && System.nanoTime() >= deadline) break;
 			ContainerScanTarget target = this.containerScanOrder.get((start + offset) % total);
 			SharedProject project = target.project();
 			SharedProject.ContainerKey key = target.key();
 			ServerLevel level = ServerContainerAccess.level(server, key.dimension());
-			Map<String, Integer> snapshot = level != null ? ServerContainerAccess.snapshot(level,
-					new BlockPos(key.x(), key.y(), key.z())) : null;
 			scanned++;
-			if (snapshot != null && snapshot.size() <= ShareProtocol.MAX_ITEM_TYPES_PER_CONTAINER
-					&& project.refreshContainer(key, snapshot)) {
+			if (level == null) continue;
+			ServerContainerAccess.ReadResult result = ServerContainerAccess.read(level,
+					new BlockPos(key.x(), key.y(), key.z()));
+			if (result.shouldRemoveMark() && project.removeContainer(key)) {
+				removed.computeIfAbsent(project, ignored -> new ArrayList<>()).add(key);
+				this.pendingProjectRecipients.computeIfAbsent(project.id(), ignored -> new LinkedHashSet<>());
+				this.containerScanDirty = true;
+			} else if (result.status() == ServerContainerAccess.ReadStatus.AVAILABLE
+					&& result.items().size() <= ShareProtocol.MAX_ITEM_TYPES_PER_CONTAINER
+					&& project.refreshContainer(key, result.items())) {
 				changed.computeIfAbsent(project, ignored -> new ArrayList<>()).add(key);
 			}
 		}
 		if (scanned > 0) this.containerScanCursor = (start + scanned) % total;
-		if (!changed.isEmpty()) {
-			for (Map.Entry<SharedProject, List<SharedProject.ContainerKey>> entry : changed.entrySet()) {
-				entry.getKey().commitContainerRefresh();
+		if (!changed.isEmpty() || !removed.isEmpty()) {
+			Set<SharedProject> affected = new LinkedHashSet<>();
+			affected.addAll(changed.keySet());
+			affected.addAll(removed.keySet());
+			for (SharedProject project : affected) {
+				if (!removed.containsKey(project)) project.commitContainerRefresh();
 			}
 			this.store.save();
-			changed.forEach((project, keys) -> this.sendContainerDelta(project,
-					keys.stream().map(project::containerView).toList(), List.of()));
+			for (SharedProject project : affected) {
+				List<SharedProject.ContainerKey> changedKeys = changed.getOrDefault(project, List.of());
+				List<SharedProject.ContainerKey> removedKeys = removed.getOrDefault(project, List.of());
+				this.sendContainerDelta(project,
+						changedKeys.stream().map(project::containerView).toList(),
+						removedKeys.stream().map(ShareServer::wireKey).toList());
+			}
 		}
 	}
 
